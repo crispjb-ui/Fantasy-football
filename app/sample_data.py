@@ -236,6 +236,14 @@ DSTS = [
 ]
 
 
+DST_ABBR = {
+    "Denver Broncos": "DEN", "Baltimore Ravens": "BAL", "Philadelphia Eagles": "PHI",
+    "Pittsburgh Steelers": "PIT", "Houston Texans": "HOU", "Minnesota Vikings": "MIN",
+    "Green Bay Packers": "GB", "Detroit Lions": "DET", "Kansas City Chiefs": "KC",
+    "Buffalo Bills": "BUF", "Seattle Seahawks": "SEA", "Los Angeles Chargers": "LAC",
+    "New York Jets": "NYJ", "San Francisco 49ers": "SF", "Dallas Cowboys": "DAL",
+}
+
 # Years of NFL experience entering 2026 (0 = incoming rookie) for the young
 # players in the sample pool — powers the keeper-stash board in demo mode.
 # Live Sleeper refreshes carry real age/years_exp for everyone.
@@ -275,8 +283,8 @@ def _rows():
         yield n, t, "K", {"fgm_0_19": 1, "fgm_20_29": fgs // 2, "fgm_30_39": fgs - fgs // 2 - 1,
                           "fgm_40_49": fg40, "fgm_50p": fg50, "fgmiss": 3, "xpm": xp, "xpmiss": 1}
     for n, sack, ints, fr, td, pa, ya in DSTS:
-        yield n, None, "DST", {"sack": sack, "int": ints, "fum_rec": fr,
-                               "def_td": td, "pts_allow": pa, "yds_allow": ya}
+        yield n, DST_ABBR.get(n), "DST", {"sack": sack, "int": ints, "fum_rec": fr,
+                                          "def_td": td, "pts_allow": pa, "yds_allow": ya}
 
 
 def load():

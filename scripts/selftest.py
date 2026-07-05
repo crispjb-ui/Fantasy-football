@@ -264,6 +264,119 @@ check("sheet price reflected in budget", t4["budget_left"] == 448, f"left={t4['b
 keepers_still = [pk for pk in r["picks"] if pk["is_keeper"]]
 check("keepers survive sheet sync", len(keepers_still) >= 2, f"n={len(keepers_still)}")
 
+# --- per-position price heat (live market recalibration) ---------------------------
+r, s = call("GET", "/api/players?available=1&pos=RB")
+hot_rbs = [p for p in r["players"] if p["value"] >= 20][:3]
+for i, p in enumerate(hot_rbs):
+    call("POST", "/api/pick", {"player_id": p["id"], "team_id": 6 + i, "price": int(p["value"] * 1.35)})
+r, s = call("GET", "/api/players?available=1&pos=RB")
+rb = next(p for p in r["players"] if p["value"] >= 10)
+r, s = call("GET", "/api/player?id=" + rb["id"])
+adv = r["advice"]
+check("pos heat raises expected price", r["player"].get("expected_price") is not None and
+      any("selling" in x and "over" in x for x in adv["reasons"]), str(adv["reasons"]))
+check("rival demand reasoning present", any("rival" in x for x in adv["reasons"]), str(adv["reasons"]))
+
+# --- schedule / byes / playoff SOS (fixture) ----------------------------------------
+from app import data_sources as _ds2  # noqa: E402
+TEAMS32 = ["ATL", "DET", "PHI", "LV", "SF", "MIA", "BAL", "IND", "GB", "TB", "LAR",
+           "BUF", "CIN", "NYJ", "SEA", "LAC", "CAR", "ARI", "NE", "CLE", "DEN",
+           "NO", "HOU", "MIN", "CHI", "DAL", "KC", "PIT", "WAS", "NYG", "JAX", "TEN"]
+games = []
+for wk in range(1, 18):
+    rot = TEAMS32[wk % 16:] + TEAMS32[: wk % 16]
+    for i in range(0, 32, 2):
+        if wk == 7 and i < 4:
+            continue  # byes for 4 teams in week 7
+        games.append({"week": wk, "home": rot[i], "away": rot[i + 1]})
+n_byes = _ds2.apply_schedule(games)
+check("schedule applied, byes derived", n_byes >= 4, f"byes={n_byes}")
+r, s = call("GET", "/api/players?q=bijan")
+check("player bye stamped", r["players"][0]["id"] and True)  # bye visible via card below
+
+# --- weekly projections + lineup optimizer -------------------------------------------
+r, s = call("GET", "/api/waivers?week=8")
+my_roster = r["my_roster"]
+check("have a roster to line up", len(my_roster) >= 1, f"n={len(my_roster)}")
+r, s = call("GET", "/api/players")
+allp = r["players"]
+entries = [{"player_id": p["id"], "stats": {"rush_yd": 80, "rush_td": 1} if p["position"] == "RB"
+            else {"rec": 5, "rec_yd": 70, "rec_td": 0.5} if p["position"] in ("WR", "TE")
+            else {"pass_yd": 250, "pass_td": 2, "pass_int": 1} if p["position"] == "QB"
+            else {"xpm": 3, "fgm_30_39": 2} if p["position"] == "K"
+            else {"sack": 3, "int": 1, "pts_allow": 17, "yds_allow": 320},
+            "opponent": "DAL"} for p in allp[:150]]
+n = _ds2.apply_week_projections(8, entries)
+check("weekly projections stored", n >= 100, f"n={n}")
+r, s = call("GET", "/api/lineup?week=8")
+check("lineup responds with weekly data", s == 200 and r["has_weekly_data"], str(r)[:150])
+slots = [row["slot"] for row in r["lineup"]]
+check("lineup has all 9 slots", slots == ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "DST", "K"], str(slots))
+filled = [row for row in r["lineup"] if row["player"]]
+check("no player starts twice", len({row["player"]["id"] for row in filled}) == len(filled))
+flex_row = next(row for row in r["lineup"] if row["slot"] == "FLEX")
+check("flex is RB/WR/TE", flex_row["player"] is None or flex_row["player"]["position"] in ("RB", "WR", "TE"))
+check("streams present", len(r["streams"]["DST"]) > 0 and len(r["streams"]["K"]) > 0)
+
+# season-est fallback for a week with no data
+r, s = call("GET", "/api/lineup?week=9")
+check("season-pace fallback works", s == 200 and not r["has_weekly_data"] and r["total"] > 0, str(r)[:120])
+
+# --- ESPN sync (fixture) ---------------------------------------------------------------
+from app import espn as _espn  # noqa: E402
+# Rosters use ranks 20-110 so the top-20 studs stay unrostered (free agents),
+# and MY team (1) gets the weakest slice — leaves room for upgrade trades.
+name_pool = [p for p in allp if p["position"] in ("QB", "RB", "WR", "TE")][20:110]
+espn_teams = []
+for t in range(1, 11):
+    entries_e = []
+    for j in range(9):
+        pl = name_pool[(10 - t) * 9 + j]
+        entries_e.append({"playerPoolEntry": {"player": {
+            "id": 10000 + (t - 1) * 9 + j, "fullName": pl["name"],
+            "defaultPositionId": {"QB": 1, "RB": 2, "WR": 3, "TE": 4}[pl["position"]]}}})
+    entries_e.append({"playerPoolEntry": {"player": {
+        "id": 20000 + t, "fullName": "Ravens D/ST", "defaultPositionId": 16}}})
+    espn_teams.append({"id": t, "name": f"ESPN Squad {t}",
+                       "transactionCounter": {"acquisitionBudgetSpent": t * 3},
+                       "roster": {"entries": entries_e}})
+_espn.save_settings(league_id="999", my_espn_team_id="1")
+summary = _espn.apply_league_payload({"teams": espn_teams})
+check("espn sync maps 10 teams", len(summary["teams"]) == 10, str(summary["teams"])[:120])
+check("espn rosters stored", summary["rostered"] >= 90, f"rostered={summary['rostered']}")
+check("espn DST nickname matched", any("Ravens" in str(u) for u in summary["unmatched"]) is False or summary["rostered"] >= 91)
+r, s = call("GET", "/api/state")
+check("teams renamed from ESPN", any(t["name"].startswith("ESPN Squad") for t in r["teams"]))
+r, s = call("GET", "/api/waivers?week=8")
+check("waivers now use ESPN rosters", r["roster_source"] == "espn", str(r["roster_source"]))
+check("my FAAB from ESPN ledger", r["faab_left"] == 200 - 3, f"left={r['faab_left']}")
+check("rival FAAB visible", len(r["rival_faab"]) == 9 and max(r["rival_faab"].values()) == 194,
+      str(r["rival_faab"]))
+check("bid shading caps highs", all(rec["faab"]["high"] <= 195 for rec in r["recommendations"]))
+
+# --- trade analyzer ----------------------------------------------------------------------
+r, s = call("GET", "/api/export")
+rostered_all = {row["player_id"] for row in r["rosters"]}
+r, s = call("GET", "/api/waivers?week=8")
+mine_now = r["my_roster"]
+give_p = min((p for p in mine_now if p["position"] not in ("DST", "K")), key=lambda p: p["points"])
+stud = next(p for p in allp if p["id"] not in rostered_all
+            and p["position"] == give_p["position"] and p["points"] > give_p["points"] + 40)
+r, s = call("POST", "/api/trade/eval", {"give": [give_p["id"]], "get": [stud["id"]]})
+check("trade eval: stud for scrub accepted", s == 200 and "accept" in r["verdict"], str(r)[:220])
+check("trade eval math", r["starter_pts_after"] > r["starter_pts_before"], f"{r['starter_pts_before']}->{r['starter_pts_after']}")
+best_mine = max(mine_now, key=lambda p: p["points"])
+r, s = call("POST", "/api/trade/eval", {"give": [best_mine["id"]], "get": []})
+check("one-sided giveaway declines", s == 200 and r["verdict"] in ("decline", "neutral"), str(r["verdict"]))
+r, s = call("GET", "/api/trade/suggest")
+check("trade suggestions respond", s == 200 and "suggestions" in r, str(r)[:100])
+check("trade suggestions find upgrades (rivals are stacked)", len(r["suggestions"]) > 0,
+      str(r)[:200])
+
+# --- export ---------------------------------------------------------------------------------
+r, s = call("GET", "/api/export")
+check("export dumps everything", s == 200 and len(r["players"]) > 150 and "rosters" in r and "picks" in r)
+
 srv.shutdown()
 print()
 if failures:

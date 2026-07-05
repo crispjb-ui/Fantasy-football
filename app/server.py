@@ -11,7 +11,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import db, data_sources, recommendations, sample_data, strategy, valuation
+from . import db, data_sources, espn, recommendations, sample_data, strategy, valuation
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
@@ -29,9 +29,16 @@ def _draft_state():
     return pool, cfg, state
 
 
+def _espn_rosters_active():
+    return db.meta_get("roster_source") == "espn" and bool(db.rosters())
+
+
 def _my_roster_ids():
-    """My current roster: my auction picks, then the waiver ledger applied."""
+    """My current roster: the live ESPN sync when available, otherwise my
+    auction picks with the waiver ledger applied."""
     mine = db.my_team_id()
+    if _espn_rosters_active():
+        return [r["player_id"] for r in db.rosters() if r["team_id"] == mine]
     ids = [p["player_id"] for p in db.picks() if p["team_id"] == mine]
     for tx in db.transactions():
         if tx["drop_id"] and tx["drop_id"] in ids:
@@ -42,6 +49,8 @@ def _my_roster_ids():
 
 
 def _all_rostered_ids():
+    if _espn_rosters_active():
+        return {r["player_id"] for r in db.rosters()}
     ids = {p["player_id"] for p in db.picks()}
     for tx in db.transactions():
         if tx["add_id"]:
@@ -49,6 +58,21 @@ def _all_rostered_ids():
         if tx["drop_id"]:
             ids.discard(tx["drop_id"])
     return ids
+
+
+def _faab_state(cfg):
+    """(my_spent, {team_name: left}) — ESPN's ledger when synced, else local."""
+    mine = db.my_team_id()
+    budget = cfg["faab_budget"]
+    rivals = {}
+    if _espn_rosters_active():
+        spent_map = db.meta_get("espn_faab_spent", {})
+        my_spent = int(spent_map.get(str(mine), 0))
+        for t in db.teams():
+            if t["id"] != mine:
+                rivals[t["name"]] = budget - int(spent_map.get(str(t["id"]), 0))
+        return my_spent, rivals
+    return sum(t["faab"] for t in db.transactions()), rivals
 
 
 # --- route handlers ------------------------------------------------------------
@@ -91,7 +115,7 @@ def api_sample(q, body):
 
 def api_refresh(q, body):
     cfg = db.get_config()
-    sources = body.get("sources") or ["sleeper", "trending", "fantasypros"]
+    sources = body.get("sources") or ["sleeper", "trending", "fantasypros", "schedule"]
     results, ok_any = {}, False
     if "sleeper" in sources:
         try:
@@ -115,6 +139,13 @@ def api_refresh(q, body):
             ok_any = True
         except Exception as e:  # noqa: BLE001
             results["fantasypros"] = {"ok": False, "error": str(e)}
+    if "schedule" in sources:
+        try:
+            n = data_sources.fetch_schedule(cfg["season"])
+            results["schedule"] = {"ok": True, "byes": n}
+            ok_any = True
+        except Exception as e:  # noqa: BLE001
+            results["schedule"] = {"ok": False, "error": str(e)}
     return {"ok": ok_any, "results": results}
 
 
@@ -414,17 +445,134 @@ def api_sheet_sync(q, body):
             "rows": len(sales), "warnings": warnings[:10]}
 
 
+def api_espn_config(q, body):
+    s = espn.save_settings(
+        league_id=body.get("league_id"), espn_s2=body.get("espn_s2"),
+        swid=body.get("swid"), my_espn_team_id=body.get("my_espn_team_id"),
+        enabled=body.get("enabled"),
+    )
+    if body.get("roster_source") in ("espn", "draft"):
+        db.meta_set("roster_source", body["roster_source"])
+    return {"ok": True, "espn": {**s, "espn_s2": bool(s["espn_s2"]), "swid": bool(s["swid"])}}
+
+
+def api_espn_sync(q, body):
+    cfg = db.get_config()
+    summary = espn.sync(cfg["season"])
+    return {"ok": True, **summary}
+
+
+def api_lineup(q, body):
+    week = int(q.get("week", ["1"])[0])
+    pool, cfg = _valued_pool()
+    my_ids = set(_my_roster_ids())
+    my_players = [p for p in pool if p["id"] in my_ids]
+    rostered = _all_rostered_ids()
+    available = [p for p in pool if p["id"] not in rostered]
+    wk_proj = db.week_proj(week)
+    result = recommendations.optimal_lineup(my_players, cfg, week, wk_proj)
+    streams = recommendations.stream_candidates(available, cfg, week, wk_proj)
+
+    # FA who out-projects my weakest starter at his position this week
+    worst = {}
+    for r in result["lineup"]:
+        p = r["player"]
+        if p and (p["position"] not in worst or p["wpts"] < worst[p["position"]]["wpts"]):
+            worst[p["position"]] = p
+    upgrades = []
+    for p in available[:250]:
+        st = worst.get(p["position"])
+        if st is None:
+            continue
+        wpts, opp, src = recommendations.weekly_points(p, wk_proj, week)
+        if wpts > st["wpts"] + 1.5:
+            upgrades.append({"player": {**_slim(p), "wpts": wpts, "opp": opp},
+                             "over": st["name"], "gain": round(wpts - st["wpts"], 1)})
+    upgrades.sort(key=lambda u: -u["gain"])
+
+    def wslim(p):
+        return {**_slim(p), "wpts": p.get("wpts"), "opp": p.get("opp"),
+                "wsrc": p.get("wsrc"), "bye": p.get("bye"), "injury": p.get("injury")}
+
+    return {
+        "week": week,
+        "has_weekly_data": bool(wk_proj),
+        "roster_source": "espn" if _espn_rosters_active() else "draft",
+        "lineup": [{"slot": r["slot"], "player": wslim(r["player"]) if r["player"] else None}
+                   for r in result["lineup"]],
+        "bench": [wslim(p) for p in result["bench"]],
+        "total": result["total"],
+        "warnings": result["warnings"],
+        "streams": {pos: [wslim(p) for p in cands] for pos, cands in streams.items()},
+        "fa_upgrades": upgrades[:6],
+    }
+
+
+def api_week_refresh(q, body):
+    cfg = db.get_config()
+    week = int(body.get("week") or 1)
+    n = data_sources.fetch_week_projections(cfg["season"], week)
+    return {"ok": True, "week": week, "players": n}
+
+
+def api_trade_eval(q, body):
+    pool, cfg = _valued_pool()
+    by_id = {p["id"]: p for p in pool}
+    result = strategy.evaluate_trade(by_id, _my_roster_ids(),
+                                     body.get("give") or [], body.get("get") or [], cfg)
+    result["give"] = [_slim(p) for p in result["give"]]
+    result["get"] = [_slim(p) for p in result["get"]]
+    return result
+
+
+def api_trade_suggest(q, body):
+    pool, cfg = _valued_pool()
+    by_id = {p["id"]: p for p in pool}
+    res = strategy.suggest_trades(by_id, cfg)
+    return {
+        "note": res["note"],
+        "suggestions": [
+            {**s, "get": _slim(s["get"]), "give": _slim(s["give"])}
+            for s in res["suggestions"]
+        ],
+    }
+
+
+def api_export(q, body):
+    return {
+        "config": db.get_config(),
+        "teams": db.teams(),
+        "picks": db.picks(),
+        "transactions": db.transactions(),
+        "history": db.history(),
+        "rosters": db.rosters(),
+        "meta": {k: db.meta_get(k) for k in
+                 ("standings", "byes", "playoff_sos", "espn_faab_spent", "roster_source")},
+        "players": [{k: v for k, v in p.items() if k != "stats"} for p in db.all_players()],
+    }
+
+
 def api_waivers(q, body):
     week = int(q.get("week", ["1"])[0])
     pool, cfg = _valued_pool()
     rostered = _all_rostered_ids()
     my_ids = set(_my_roster_ids())
     my_players = [p for p in pool if p["id"] in my_ids]
-    faab_left = cfg["faab_budget"] - sum(t["faab"] for t in db.transactions())
+    my_spent, rival_faab = _faab_state(cfg)
+    faab_left = cfg["faab_budget"] - my_spent
     trending = db.meta_get("trending", {"adds": {}, "drops": {}})
     recs = recommendations.waiver_recommendations(
         pool, my_players, rostered, faab_left, week, cfg, trending=trending["adds"],
     )
+    # Bid shading: no point bidding far beyond what the richest rival can pay.
+    top_rival = max(rival_faab.values()) if rival_faab else None
+    if top_rival is not None:
+        for r in recs:
+            r["faab"]["high"] = max(r["faab"]["low"], min(r["faab"]["high"], top_rival + 1))
+    sos = db.meta_get("playoff_sos", {})
+    for r in recs:
+        s = sos.get(r["player"].get("team") or "")
+        r["playoff_sos"] = s.get("label") if s else None
     my_sorted = sorted(my_players, key=lambda p: p["points"], reverse=True)
     drop_candidates = [
         _slim(p) for p in sorted(
@@ -435,6 +583,8 @@ def api_waivers(q, body):
     return {
         "faab_left": faab_left,
         "faab_budget": cfg["faab_budget"],
+        "rival_faab": dict(sorted(rival_faab.items(), key=lambda kv: -kv[1])),
+        "roster_source": "espn" if _espn_rosters_active() else "draft",
         "week": week,
         "recommendations": [
             {**r, "player": _slim(r["player"])} for r in recs
@@ -487,6 +637,13 @@ ROUTES = {
     ("GET", "/api/strategy"): api_strategy,
     ("POST", "/api/sheet/config"): api_sheet_config,
     ("POST", "/api/sheet/sync"): api_sheet_sync,
+    ("POST", "/api/espn/config"): api_espn_config,
+    ("POST", "/api/espn/sync"): api_espn_sync,
+    ("GET", "/api/lineup"): api_lineup,
+    ("POST", "/api/week/refresh"): api_week_refresh,
+    ("POST", "/api/trade/eval"): api_trade_eval,
+    ("GET", "/api/trade/suggest"): api_trade_suggest,
+    ("GET", "/api/export"): api_export,
     ("GET", "/api/waivers"): api_waivers,
     ("POST", "/api/transaction"): api_transaction,
     ("POST", "/api/transaction/delete"): api_transaction_delete,

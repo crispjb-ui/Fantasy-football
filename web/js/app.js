@@ -51,7 +51,8 @@ async function loadDraft() { S.draft = await api("/api/draft"); }
 
 const VIEWS = [
   ["draft", "Draft Room"], ["strategy", "Strategy"], ["players", "Players"],
-  ["keepers", "Keepers"], ["myteam", "My Team"], ["waivers", "Waivers"], ["data", "Data & Setup"],
+  ["keepers", "Keepers"], ["lineup", "Lineup"], ["waivers", "Waivers"],
+  ["trades", "Trades"], ["data", "Data & Setup"],
 ];
 
 function renderNav() {
@@ -97,8 +98,9 @@ async function setView(v) {
     else if (v === "strategy") await renderStrategy(gen);
     else if (v === "players") await renderPlayers(gen);
     else if (v === "keepers") await renderKeepers(gen);
-    else if (v === "myteam") await renderMyTeam(gen);
+    else if (v === "lineup") await renderLineup(gen);
     else if (v === "waivers") await renderWaivers(gen);
+    else if (v === "trades") await renderTrades(gen);
     else if (v === "data") await renderData(gen);
   } catch (e) {
     if (gen === renderGen) {
@@ -638,34 +640,165 @@ async function renderKeepers(gen) {
   updateBtn();
 }
 
-/* ---------- my team ---------- */
+/* ---------- weekly lineup ---------- */
 
-async function renderMyTeam(gen) {
-  await loadDraft();
-  const me = S.draft.teams.find(t => t.is_me) || S.draft.teams[0];
-  const w = await api(`/api/waivers?week=${S.waiverWeek}`);
+function wRow(p, slot) {
+  if (!p) return `<tr><td><b>${slot}</b></td><td colspan="4" style="color:var(--red)">EMPTY — hit waivers</td></tr>`;
+  const flag = p.opp === "BYE" ? ' <span class="tag" style="color:var(--red)">BYE</span>'
+    : p.injury ? ` <span class="tag" style="color:var(--amber)">${esc(p.injury)}</span>` : "";
+  return `<tr>
+    ${slot !== undefined ? `<td><b>${slot}</b></td>` : ""}
+    <td><span class="pos pos-${p.position}">${p.position}</span> ${esc(p.name)} <span class="dim">${esc(p.team || "")}</span>${flag}</td>
+    <td class="r dim">${p.opp && p.opp !== "BYE" ? "vs " + esc(p.opp) : (p.opp === "BYE" ? "—" : "")}</td>
+    <td class="r"><b>${p.wpts}</b></td>
+    <td class="r dim">${p.wsrc === "season-est" ? "est" : ""}</td>
+  </tr>`;
+}
+
+async function renderLineup(gen) {
+  const L = await api(`/api/lineup?week=${S.waiverWeek}`);
   if (stale(gen)) return;
-  const slotOrder = { QB: 0, RB: 1, WR: 2, TE: 3, FLEX: 4, DST: 5, K: 6, BN: 7 };
-  const roster = me.roster.slice().sort((a, b) => (slotOrder[a.slot] ?? 9) - (slotOrder[b.slot] ?? 9));
   $("#view").innerHTML = `
+  <div class="panel">
+    <div class="filters">
+      <label class="dim">NFL Week</label>
+      <input type="number" id="lWeek" min="1" max="18" value="${L.week}" style="width:70px;padding:7px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)">
+      <button class="btn primary" id="lRefresh">↻ Fetch week ${L.week} matchup projections</button>
+      <span class="chip ${L.has_weekly_data ? "good" : "warn"}">${L.has_weekly_data ? "Matchup projections loaded" : "Using season-pace estimates — fetch weekly data"}</span>
+      <span class="chip">Roster: <b>${L.roster_source === "espn" ? "ESPN (live)" : "draft log"}</b></span>
+      <span class="note" id="lStatus"></span>
+    </div>
+    ${L.warnings.length ? `<div class="note" style="color:var(--amber)">${L.warnings.map(esc).join("<br>")}</div>` : ""}
+  </div>
   <div class="grid2">
     <div class="panel">
-      <h2>Draft-day roster — ${esc(me.name)} (spent ${money(me.spent)}, ${money(me.budget_left)} left)</h2>
-      <div class="table-wrap">${roster.length ? `<table><tr><th>Slot</th><th>Player</th><th class="r">Pts</th><th class="r">Value</th></tr>` +
-        roster.map(a => `<tr>
-          <td><b>${a.slot}</b></td>
-          <td><span class="pos pos-${a.player.position}">${a.player.position}</span> ${esc(a.player.name)} <span class="dim">${esc(a.player.team || "")}</span></td>
-          <td class="r">${a.player.points}</td><td class="r money">${money(a.player.value)}</td></tr>`).join("") + `</table>`
-        : `<div class="note">Nothing drafted yet.</div>`}</div>
-      <div class="note" style="margin-top:8px">Open starter slots: ${Object.entries(me.open_starters).filter(([, v]) => v > 0).map(([k, v]) => `${k}×${v}`).join(", ") || "none"}</div>
+      <h2>Optimal lineup — week ${L.week} <span class="hint money">${L.total} projected pts</span></h2>
+      <div class="table-wrap"><table>
+        <tr><th>Slot</th><th>Player</th><th class="r">Opp</th><th class="r">Proj</th><th></th></tr>
+        ${L.lineup.map(r => wRow(r.player, r.slot)).join("")}
+      </table></div>
+      <h2 style="margin-top:14px">Bench</h2>
+      <div class="table-wrap"><table>
+        ${L.bench.map(p => wRow(p, "")).join("") || "<tr><td class='dim'>Empty</td></tr>"}
+      </table></div>
     </div>
-    <div class="panel">
-      <h2>Current roster (after waivers)</h2>
-      <div class="table-wrap">${w.my_roster.length ? `<table>` + w.my_roster.map(p => `
-        <tr><td><span class="pos pos-${p.position}">${p.position}</span> ${esc(p.name)} <span class="dim">${esc(p.team || "")}</span></td>
-        <td class="r">${p.points} pts</td></tr>`).join("") + `</table>` : `<div class="note">Empty — log your draft results first.</div>`}</div>
+    <div>
+      ${L.fa_upgrades.length ? `<div class="panel">
+        <h2>Free agents who beat your starters this week</h2>
+        ${L.fa_upgrades.map(u => `
+          <div class="result-row"><span class="pos pos-${u.player.position}">${u.player.position}</span>
+            <span class="nm">${esc(u.player.name)} <span class="meta">${u.player.wpts} pts${u.player.opp ? " vs " + esc(u.player.opp) : ""} — beats ${esc(u.over)} by ${u.gain}</span></span>
+            <span class="val">+${u.gain}</span></div>`).join("")}
+      </div>` : ""}
+      <div class="panel">
+        <h2>Streaming — best available D/ST &amp; K this week</h2>
+        ${["DST", "K"].map(pos => `
+          <div class="note" style="margin:6px 0 2px"><b>${pos}</b></div>
+          ${(L.streams[pos] || []).map(p => `
+            <div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
+              <span class="nm">${esc(p.name)} <span class="meta">${p.opp && p.opp !== "BYE" ? "vs " + esc(p.opp) : ""}</span></span>
+              <span class="val">${p.wpts}</span></div>`).join("") || '<div class="note">none</div>'}`).join("")}
+      </div>
     </div>
   </div>`;
+  $("#lWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; setView(S.view); };
+  $("#lRefresh").onclick = async () => {
+    $("#lStatus").textContent = "Fetching…";
+    try {
+      const r = await api("/api/week/refresh", { week: S.waiverWeek });
+      toast(`Week ${r.week}: ${r.players} matchup projections loaded`);
+      setView(S.view);
+    } catch (e) { $("#lStatus").textContent = "❌ " + e.message; }
+  };
+}
+
+/* ---------- trades ---------- */
+
+const T = { give: [], get: [] };
+
+async function renderTrades(gen) {
+  const sug = await api("/api/trade/suggest");
+  const w = await api(`/api/waivers?week=${S.waiverWeek}`);
+  if (stale(gen)) return;
+  const chip = (p, side) =>
+    `<span class="tag clickable-tag" data-rm="${side}:${esc(p.id)}">${esc(p.name)} ✕</span>`;
+  $("#view").innerHTML = `
+  <div class="grid2">
+    <div>
+      <div class="panel">
+        <h2>Evaluate a trade</h2>
+        <div class="formrow"><label>I give</label>
+          <select id="tGiveSel"><option value="">— pick from my roster —</option>
+            ${w.my_roster.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${p.position}, ${money(p.value)})</option>`).join("")}
+          </select></div>
+        <div id="tGive">${T.give.map(p => chip(p, "give")).join(" ")}</div>
+        <div class="formrow" style="margin-top:10px"><label>I get</label>
+          <input type="text" id="tGetSearch" placeholder="Search any player…" autocomplete="off"></div>
+        <div class="results" id="tGetResults" style="max-height:150px"></div>
+        <div id="tGet">${T.get.map(p => chip(p, "get")).join(" ")}</div>
+        <div class="formrow" style="margin-top:10px"><button class="btn primary" id="tEval">Evaluate trade</button>
+          <button class="btn" id="tClear">Clear</button></div>
+        <div id="tResult"></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Suggested trades to propose</h2>
+        ${sug.note ? `<div class="note">${esc(sug.note)}</div>` : ""}
+        ${sug.suggestions.length ? sug.suggestions.map(s => `
+          <div class="result-row">
+            <span class="nm"><b>Get</b> <span class="pos pos-${s.get.position}">${s.get.position}</span> ${esc(s.get.name)}
+              <b>for</b> <span class="pos pos-${s.give.position}">${s.give.position}</span> ${esc(s.give.name)}
+              <span class="meta">from ${esc(s.team)} · you +${s.my_gain_ppw} pts/wk · them ${s.their_gain_ppw >= 0 ? "+" : ""}${s.their_gain_ppw} pts/wk — ${esc(s.pitch)}</span></span>
+            <span class="val">+${s.my_gain_ppw}</span>
+          </div>`).join("") : `<div class="note">No clear win-win trades found on current rosters. Sync ESPN (Data &amp; Setup) so I can see everyone's real roster.</div>`}
+      </div>
+    </div>
+  </div>`;
+
+  $("#tGiveSel").onchange = e => {
+    const p = w.my_roster.find(x => x.id === e.target.value);
+    if (p && !T.give.some(x => x.id === p.id)) T.give.push(p);
+    setView(S.view);
+  };
+  let tt;
+  $("#tGetSearch").oninput = e => {
+    clearTimeout(tt);
+    tt = setTimeout(async () => {
+      const q = e.target.value.trim();
+      if (!q) return ($("#tGetResults").innerHTML = "");
+      const r = await api(`/api/players?q=${encodeURIComponent(q)}`);
+      $("#tGetResults").innerHTML = r.players.slice(0, 6).map(p => `
+        <div class="result-row" data-pid="${esc(p.id)}" data-nm="${esc(p.name)}" data-pos="${p.position}" data-val="${p.value}">
+          <span class="pos pos-${p.position}">${p.position}</span><span class="nm">${esc(p.name)}</span>
+          <span class="val">${money(p.value)}</span></div>`).join("");
+      $$("#tGetResults .result-row").forEach(row => (row.onclick = () => {
+        if (!T.get.some(x => x.id === row.dataset.pid)) {
+          T.get.push({ id: row.dataset.pid, name: row.dataset.nm });
+        }
+        setView(S.view);
+      }));
+    }, 120);
+  };
+  $$("#view [data-rm]").forEach(el => (el.onclick = () => {
+    const [side, id] = el.dataset.rm.split(/:(.+)/);
+    T[side] = T[side].filter(p => p.id !== id);
+    setView(S.view);
+  }));
+  $("#tClear").onclick = () => { T.give = []; T.get = []; setView(S.view); };
+  $("#tEval").onclick = async () => {
+    try {
+      const r = await api("/api/trade/eval", { give: T.give.map(p => p.id), get: T.get.map(p => p.id) });
+      const cls = r.verdict.includes("accept") ? "target" : r.verdict === "neutral" ? "fair" : "pass";
+      $("#tResult").innerHTML = `
+        <div class="headline ${cls}" style="margin-top:12px">${r.verdict.toUpperCase().replace("-", " ")} — ${esc(r.summary)}</div>
+        <div class="note">Starters: ${r.starter_pts_before} → ${r.starter_pts_after} season pts
+          (${r.delta_per_week >= 0 ? "+" : ""}${r.delta_per_week}/week) · asset value ${r.value_delta >= 0 ? "+" : ""}$${r.value_delta}
+          · roster spots ${r.roster_spots_delta >= 0 ? "+" : ""}${r.roster_spots_delta}</div>
+        ${r.keeper_notes.map(n => `<div class="note" style="color:var(--green)">🌱 ${esc(n)}</div>`).join("")}
+        ${r.sos_notes.map(n => `<div class="note">📅 ${esc(n)}</div>`).join("")}`;
+    } catch (e) { toast(e.message, true); }
+  };
 }
 
 /* ---------- waivers ---------- */
@@ -680,7 +813,11 @@ async function renderWaivers(gen) {
       <label class="dim">NFL Week</label>
       <input type="number" id="wWeek" min="1" max="18" value="${w.week}" style="width:70px;padding:7px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)">
       <span class="chip">FAAB left <b class="money">$${w.faab_left}</b> / $${w.faab_budget}</span>
-      <span class="note">Refresh trending data from the Data tab before setting claims. FAAB ranges assume a $${w.faab_budget} season budget.</span>
+      ${Object.keys(w.rival_faab || {}).length
+        ? `<span class="chip">Richest rival <b>$${Object.values(w.rival_faab)[0]}</b></span>
+           <span class="chip">Roster: <b>${w.roster_source === "espn" ? "ESPN live" : "draft log"}</b></span>`
+        : ""}
+      <span class="note">Refresh trending data from the Data tab before setting claims. Bid ranges are shaded to what rivals can actually pay${Object.keys(w.rival_faab || {}).length ? "" : " once ESPN is synced"}.</span>
     </div>
   </div>
   <div class="grid2">
@@ -690,7 +827,9 @@ async function renderWaivers(gen) {
         <tr><th>Player</th><th>Upgrades over</th><th class="r">+Pts</th><th class="r">Trend</th><th class="r">Bid</th><th></th></tr>` +
         w.recommendations.map(r => `
         <tr>
-          <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span></td>
+          <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span>${
+            r.playoff_sos === "easy" ? ' <span class="tag" style="color:var(--green)" title="easy playoff schedule (wks 15-17)">SOS+</span>' :
+            r.playoff_sos === "tough" ? ' <span class="tag" style="color:var(--red)" title="tough playoff schedule (wks 15-17)">SOS−</span>' : ""}</td>
           <td class="dim">${esc(r.upgrade_over || "—")}</td>
           <td class="r ${r.gap_pts > 0 ? "money" : "dim"}">${r.gap_pts > 0 ? "+" + r.gap_pts : r.gap_pts}</td>
           <td class="r dim">${r.trending_adds ? "🔥" + r.trending_adds : ""}</td>
@@ -793,6 +932,19 @@ async function renderData(gen) {
         <div class="note" id="rfStatus"></div>
       </div>
       <div class="panel">
+        <h2>ESPN league sync (in-season)</h2>
+        <div class="note" style="margin-bottom:8px">Connect your ESPN league (read-only) so rosters, free agents and
+          everyone's FAAB stay live all season — no manual bookkeeping. For private leagues grab the
+          <span class="kbd">espn_s2</span> and <span class="kbd">SWID</span> cookies from espn.com
+          (browser dev tools → Application → Cookies while logged in).</div>
+        <div class="formrow"><label>League ID</label><input type="text" id="eLeague" placeholder="e.g. 123456" style="width:140px"></div>
+        <div class="formrow"><label>espn_s2</label><input type="text" id="eS2" placeholder="long cookie value" style="flex:1"></div>
+        <div class="formrow"><label>SWID</label><input type="text" id="eSwid" placeholder="{XXXXXXXX-...}" style="flex:1"></div>
+        <div class="formrow"><label>My ESPN team</label><select id="eMyTeam"><option value="">— sync once to list teams —</option></select>
+          <button class="btn primary" id="eSync">Sync now</button></div>
+        <div class="note" id="eStatus"></div>
+      </div>
+      <div class="panel">
         <h2>Google Sheet draft sync</h2>
         <div class="note" style="margin-bottom:8px">If your league tracks sales in a Google Sheet, paste its link here
           (shared as <b>“Anyone with the link can view”</b>). While enabled, the Draft Room auto-pulls it every 15 seconds
@@ -856,7 +1008,8 @@ async function renderData(gen) {
         <h2>Danger zone</h2>
         <div class="formrow"><button class="btn danger" id="resetDraft">Reset draft picks</button>
           <button class="btn danger" id="resetAll">Reset picks + keepers</button>
-          <button class="btn" id="loadSample">Reload sample data</button></div>
+          <button class="btn" id="loadSample">Reload sample data</button>
+          <button class="btn" id="exportBtn">⬇ Export backup (JSON)</button></div>
       </div>
     </div>
   </div>`;
@@ -949,6 +1102,35 @@ async function renderData(gen) {
     await loadApp();
     setView(S.view);
   };
+  $("#exportBtn").onclick = async () => {
+    const data = await api("/api/export");
+    const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `auction-copilot-backup-${data.config.season}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const doEspnSync = async () => {
+    $("#eStatus").textContent = "Syncing… (needs internet on this machine)";
+    try {
+      await api("/api/espn/config", {
+        league_id: $("#eLeague").value.trim(),
+        espn_s2: $("#eS2").value.trim() || null,
+        swid: $("#eSwid").value.trim() || null,
+        my_espn_team_id: $("#eMyTeam").value || null,
+      });
+      const r = await api("/api/espn/sync", {});
+      $("#eMyTeam").innerHTML = r.teams.map(t =>
+        `<option value="${t.espn_id}">${esc(t.name)} (${t.players} players)</option>`).join("");
+      $("#eStatus").innerHTML = `✅ ${r.teams.length} teams, ${r.rostered} rostered players synced.` +
+        ` Pick <b>your</b> team above and sync again to mark it.` +
+        (r.unmatched.length ? `<br>⚠️ unmatched: ${r.unmatched.map(esc).join(", ")}` : "");
+      await loadApp();
+    } catch (e) { $("#eStatus").textContent = "❌ " + e.message; }
+  };
+  $("#eSync").onclick = doEspnSync;
 }
 
 /* ---------- global keys & boot ---------- */

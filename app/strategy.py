@@ -261,6 +261,153 @@ def trade_finder(advisor, cfg):
     return {"targets": targets[:12], "shop": shop, "note": ""}
 
 
+# --- in-season trade analyzer -------------------------------------------------
+
+def _starter_points(players, cfg):
+    from . import valuation
+    assignments, _ = valuation._assign_roster_slots(players, cfg)
+    return sum(a["player"].get("points", 0) for a in assignments if a["slot"] != "BN")
+
+
+def _price_paid():
+    """Best-known auction price per player (this year's picks, else history)."""
+    paid = {}
+    for h in db.history():
+        if h["player_id"]:
+            paid.setdefault(h["player_id"], h["price"])
+    for pk in db.picks():
+        paid[pk["player_id"]] = pk["price"]
+    return paid
+
+
+def evaluate_trade(pool_by_id, my_ids, give_ids, get_ids, cfg):
+    """Assess a proposed trade from MY side: starter-lineup points delta,
+    value delta, keeper-forward angle, playoff schedule notes, verdict."""
+    mine = [pool_by_id[i] for i in my_ids if i in pool_by_id]
+    give = [pool_by_id[i] for i in give_ids if i in pool_by_id]
+    get = [pool_by_id[i] for i in get_ids if i in pool_by_id]
+    if not (give or get):
+        raise RuntimeError("Pick at least one player on either side")
+
+    before = _starter_points(mine, cfg)
+    give_set = {p["id"] for p in give}
+    after_roster = [p for p in mine if p["id"] not in give_set] + get
+    after = _starter_points(after_roster, cfg)
+    delta = after - before
+    ppw = delta / 17.0
+
+    value_delta = sum(p.get("value", 0) for p in get) - sum(p.get("value", 0) for p in give)
+    paid = _price_paid()
+    surcharge = cfg["keeper_surcharge"]
+    keeper_notes = []
+    for p in get:
+        if p["id"] in paid:
+            surplus = p.get("value", 0) - (paid[p["id"]] + surcharge)
+            if surplus > 8:
+                keeper_notes.append(
+                    f"{p['name']} keeps in {cfg['season'] + 1} at ${paid[p['id']] + surcharge} "
+                    f"(~${surplus:.0f} of keeper surplus rides along)")
+    sos = db.meta_get("playoff_sos", {})
+    sos_notes = []
+    for p in get:
+        s = sos.get(p.get("team") or "")
+        if s and s.get("label") == "easy":
+            sos_notes.append(f"{p['name']} has an easy playoff schedule (wks 15-17: {', '.join(s['opps'])})")
+        elif s and s.get("label") == "tough":
+            sos_notes.append(f"{p['name']} faces a tough playoff slate (wks 15-17: {', '.join(s['opps'])})")
+
+    roster_delta = len(get) - len(give)
+    if ppw >= 1.5:
+        verdict, summary = "smash-accept", f"Your starting lineup gains {ppw:.1f} pts/week — do it."
+    elif ppw >= 0.4:
+        verdict, summary = "accept", f"Solid: +{ppw:.1f} pts/week to your starters."
+    elif ppw > -0.4:
+        verdict = "neutral"
+        summary = ("Roughly lineup-neutral — decide on depth, keeper value and playoff schedule."
+                   if abs(value_delta) < 8 else
+                   f"Lineup-neutral but you {'gain' if value_delta > 0 else 'give up'} ${abs(value_delta):.0f} of asset value.")
+    else:
+        verdict, summary = "decline", f"Your starters lose {abs(ppw):.1f} pts/week."
+    return {
+        "verdict": verdict, "summary": summary,
+        "starter_pts_before": round(before, 1), "starter_pts_after": round(after, 1),
+        "delta_per_week": round(ppw, 2), "value_delta": round(value_delta, 1),
+        "roster_spots_delta": roster_delta,
+        "keeper_notes": keeper_notes, "sos_notes": sos_notes,
+        "give": give, "get": get,
+    }
+
+
+def _league_rosters(my_id):
+    """{team_id: [player_ids]} from ESPN sync when available, else draft picks."""
+    out = {}
+    if db.meta_get("roster_source") == "espn":
+        for r in db.rosters():
+            out.setdefault(r["team_id"], []).append(r["player_id"])
+        if out:
+            return out
+    for pk in db.picks():
+        out.setdefault(pk["team_id"], []).append(pk["player_id"])
+    return out
+
+
+def suggest_trades(pool_by_id, cfg, limit=8):
+    """Scan rival rosters for players who upgrade MY starters, paired with a
+    plausible give-back from my depth that helps THEM."""
+    my_id = db.my_team_id()
+    rosters = _league_rosters(my_id)
+    my_ids = rosters.get(my_id, [])
+    mine = [pool_by_id[i] for i in my_ids if i in pool_by_id]
+    if not mine:
+        return {"suggestions": [], "note": "No roster found — sync ESPN or log your draft first."}
+    teams = {t["id"]: t["name"] for t in db.teams()}
+    before = _starter_points(mine, cfg)
+
+    from . import valuation
+    my_assignments, _ = valuation._assign_roster_slots(mine, cfg)
+    my_bench = [a["player"] for a in my_assignments if a["slot"] == "BN"]
+
+    suggestions = []
+    for tid, pids in rosters.items():
+        if tid == my_id:
+            continue
+        their = [pool_by_id[i] for i in pids if i in pool_by_id]
+        their_before = _starter_points(their, cfg)
+        for target in sorted(their, key=lambda p: p.get("points", 0), reverse=True)[:8]:
+            # my gain if I swap my weakest for the target
+            for give in my_bench:
+                if give["id"] == target["id"]:
+                    continue
+                v_t, v_g = target.get("value", 0), give.get("value", 0)
+                if not (0.4 * v_t <= v_g <= 1.6 * v_t + 5):
+                    continue
+                my_after = _starter_points([p for p in mine if p["id"] != give["id"]] + [target], cfg)
+                my_gain = (my_after - before) / 17.0
+                if my_gain < 0.5:
+                    continue
+                their_after = _starter_points([p for p in their if p["id"] != target["id"]] + [give], cfg)
+                their_gain = (their_after - their_before) / 17.0
+                suggestions.append({
+                    "team_id": tid, "team": teams.get(tid, f"Team {tid}"),
+                    "get": target, "give": give,
+                    "my_gain_ppw": round(my_gain, 2),
+                    "their_gain_ppw": round(their_gain, 2),
+                    "pitch": (f"{teams.get(tid)} starts {give['name']} over what they have"
+                              if their_gain > 0 else
+                              f"Sell {give['name']}'s name value; they lose little"),
+                })
+    # Plausible first: trades that help them too, then by my gain.
+    suggestions.sort(key=lambda s: (-(s["their_gain_ppw"] > 0), -s["my_gain_ppw"]))
+    seen, deduped = set(), []
+    for s in suggestions:
+        key = (s["get"]["id"],)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(s)
+    return {"suggestions": deduped[:limit], "note": ""}
+
+
 # --- roster blueprint ------------------------------------------------------------------
 
 ARCHETYPES = [

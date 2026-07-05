@@ -23,10 +23,10 @@ def _tier_value(per_game: float, tiers) -> float:
     return 0.0
 
 
-def score_dst(stats: dict) -> float:
+def score_dst(stats: dict, games: int = config.GAMES_PER_SEASON) -> float:
     pts = sum(stats.get(k, 0) * w for k, w in config.SCORING_DST_COUNTING.items())
-    games = config.GAMES_PER_SEASON
-    # Season-total points/yards allowed -> per-game tier value, scaled back up.
+    # Points/yards allowed totals -> per-game tier value, scaled back up.
+    # For weekly projections pass games=1 so the tiers apply directly.
     if stats.get("pts_allow") is not None:
         pa_per_game = stats["pts_allow"] / games
         pts += _tier_value(pa_per_game, config.DST_POINTS_ALLOWED_TIERS) * games
@@ -36,14 +36,14 @@ def score_dst(stats: dict) -> float:
     return pts
 
 
-def score_player(position: str, stats: dict) -> float:
-    """Season fantasy points for a player given projected season stat totals."""
+def score_player(position: str, stats: dict, games: int = config.GAMES_PER_SEASON) -> float:
+    """Fantasy points for a player given projected stat totals over `games`."""
     if not stats:
         return 0.0
     if position == "K":
         pts = score_kicker(stats)
     elif position == "DST":
-        pts = score_dst(stats)
+        pts = score_dst(stats, games)
     else:
         pts = score_offense(stats)
     # Fall back to the source's own standard-scoring total when we cannot

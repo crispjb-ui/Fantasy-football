@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS history (
     position TEXT,
     price INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS rosters (
+    team_id INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    PRIMARY KEY (team_id, player_id)
+);
+CREATE TABLE IF NOT EXISTS week_proj (
+    week INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    points REAL DEFAULT 0,
+    opp TEXT,
+    PRIMARY KEY (week, player_id)
+);
 """
 
 
@@ -89,8 +101,8 @@ def connect() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
-        # Migrate databases created before the age/years_exp columns existed.
-        for col in ("age INTEGER", "years_exp INTEGER"):
+        # Migrate databases created before these columns existed.
+        for col in ("age INTEGER", "years_exp INTEGER", "espn_id TEXT"):
             try:
                 conn.execute(f"ALTER TABLE players ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -139,14 +151,15 @@ def upsert_players(rows, source):
     now = time.time()
     for r in rows:
         conn.execute(
-            """INSERT INTO players (id, name, position, team, bye, status, injury,
-                                    adp, market_aav, stats, points, age, years_exp,
-                                    source, updated_at)
-               VALUES (:id,:name,:position,:team,:bye,:status,:injury,
+            """INSERT INTO players (id, espn_id, name, position, team, bye, status,
+                                    injury, adp, market_aav, stats, points, age,
+                                    years_exp, source, updated_at)
+               VALUES (:id,:espn_id,:name,:position,:team,:bye,:status,:injury,
                        :adp,:market_aav,:stats,:points,:age,:years_exp,
                        :source,:updated_at)
                ON CONFLICT(id) DO UPDATE SET
                  name=excluded.name, position=excluded.position, team=excluded.team,
+                 espn_id=COALESCE(excluded.espn_id, players.espn_id),
                  bye=COALESCE(excluded.bye, players.bye),
                  status=COALESCE(excluded.status, players.status),
                  injury=excluded.injury,
@@ -158,7 +171,8 @@ def upsert_players(rows, source):
                  years_exp=COALESCE(excluded.years_exp, players.years_exp),
                  source=excluded.source, updated_at=excluded.updated_at""",
             {
-                "id": r["id"], "name": r["name"], "position": r["position"],
+                "id": r["id"], "espn_id": r.get("espn_id"), "name": r["name"],
+                "position": r["position"],
                 "team": r.get("team"), "bye": r.get("bye"), "status": r.get("status"),
                 "injury": r.get("injury"), "adp": r.get("adp"),
                 "market_aav": r.get("market_aav"),
@@ -285,6 +299,46 @@ def remove_transaction(tx_id):
 
 def transactions():
     return [dict(r) for r in connect().execute("SELECT * FROM transactions ORDER BY id").fetchall()]
+
+
+# --- live rosters (ESPN sync) & weekly projections ------------------------------
+
+def replace_rosters(rows):
+    """rows: [(team_id, player_id)] — full replacement from a league sync."""
+    conn = connect()
+    conn.execute("DELETE FROM rosters")
+    conn.executemany("INSERT OR IGNORE INTO rosters (team_id, player_id) VALUES (?,?)", rows)
+    conn.commit()
+
+
+def rosters():
+    return [dict(r) for r in connect().execute("SELECT * FROM rosters ORDER BY team_id").fetchall()]
+
+
+def set_week_proj(week, rows):
+    """rows: [{player_id, points, opp}] — full replacement for that week."""
+    conn = connect()
+    conn.execute("DELETE FROM week_proj WHERE week=?", (week,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO week_proj (week, player_id, points, opp) VALUES (?,?,?,?)",
+        [(week, r["player_id"], r["points"], r.get("opp")) for r in rows],
+    )
+    conn.commit()
+
+
+def week_proj(week):
+    return {
+        r["player_id"]: {"points": r["points"], "opp": r["opp"]}
+        for r in connect().execute("SELECT * FROM week_proj WHERE week=?", (week,)).fetchall()
+    }
+
+
+def set_byes(team_byes):
+    """team_byes: {team_abbrev: bye_week} — stamp onto the player pool."""
+    conn = connect()
+    for team, wk in team_byes.items():
+        conn.execute("UPDATE players SET bye=? WHERE team=?", (wk, team))
+    conn.commit()
 
 
 # --- last-year history (keeper/trade/temperament analysis) ---------------------

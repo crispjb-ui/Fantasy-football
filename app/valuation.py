@@ -231,7 +231,30 @@ def draft_state(valued_pool, picks, teams, cfg):
         else:
             p["adj_value"] = p["value"]
 
+    # Per-position price heat: how sales at each position are actually
+    # running vs. sticker tonight (shrunk toward 1.0 with few samples), used
+    # to keep expected prices honest as the room reveals its behavior.
+    sold_by_pos = {}
+    for pk in picks:
+        if pk["is_keeper"]:          # keeper prices are formulaic, not market
+            continue
+        pl = by_id.get(pk["player_id"])
+        if pl and pl.get("value", 0) >= 1:
+            s = sold_by_pos.setdefault(pl["position"], {"paid": 0.0, "value": 0.0})
+            s["paid"] += pk["price"]
+            s["value"] += pl["value"]
+    K = 40.0                         # shrinkage prior (in dollars)
+    pos_heat = {}
+    for pos, s in sold_by_pos.items():
+        pos_heat[pos] = round(max(0.75, min(1.4, (s["paid"] + K) / (s["value"] + K))), 2)
+    for p in remaining:
+        heat = pos_heat.get(p["position"], 1.0)
+        exp = p.get("expected_price", p["value"])
+        p["expected_live"] = round(max(1.0, exp * heat), 1) if p["value"] >= 1 else exp
+        p["edge_live"] = round(p["value"] - p["expected_live"], 1)
+
     return {
+        "pos_heat": pos_heat,
         "teams": sorted(team_state.values(), key=lambda t: t["id"]),
         "remaining": remaining,
         "inflation": round(inflation, 3),

@@ -91,6 +91,7 @@ def fetch_sleeper(season):
             "points": pts,
             "age": info.get("age"),
             "years_exp": info.get("years_exp"),
+            "espn_id": str(info["espn_id"]) if info.get("espn_id") else None,
         })
     if not rows:
         raise RuntimeError(f"Sleeper returned no usable {season} projections")
@@ -105,6 +106,103 @@ def fetch_trending():
     drops = {str(e["player_id"]): e["count"] for e in json.loads(_get(SLEEPER_TRENDING.format(kind="drop")))}
     db.meta_set("trending", {"adds": adds, "drops": drops})
     return adds, drops
+
+
+SLEEPER_SCHEDULE = "https://api.sleeper.com/schedule/nfl/regular/{season}"
+SLEEPER_WEEK_PROJECTIONS = (
+    "https://api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular"
+    "&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K&position[]=DEF"
+    "&order_by=pts_std"
+)
+PLAYOFF_WEEKS = (15, 16, 17)
+
+
+def fetch_schedule(season):
+    games = json.loads(_get(SLEEPER_SCHEDULE.format(season=season)))
+    return apply_schedule(games)
+
+
+def apply_schedule(games):
+    """Store the NFL schedule; derive bye weeks and playoff-week (15-17)
+    schedule strength per NFL team. `games` rows need week/home/away keys."""
+    by_week = {}
+    for g in games:
+        wk = int(g.get("week") or 0)
+        home = g.get("home") or g.get("home_team")
+        away = g.get("away") or g.get("away_team")
+        if not (wk and home and away):
+            continue
+        by_week.setdefault(wk, []).append((home, away))
+    if not by_week:
+        raise RuntimeError("Schedule feed had no usable games")
+
+    teams = {t for pairs in by_week.values() for pair in pairs for t in pair}
+    byes = {}
+    for team in teams:
+        for wk in range(1, 15):
+            if wk in by_week and not any(team in pair for pair in by_week[wk]):
+                byes[team] = wk
+                break
+    db.meta_set("schedule", {str(k): v for k, v in by_week.items()})
+    db.set_byes(byes)
+    db.meta_set("byes", byes)
+    _compute_playoff_sos(by_week, teams)
+    return len(byes)
+
+
+def _compute_playoff_sos(by_week, teams):
+    """Fantasy-playoff schedule strength: average projected D/ST quality of a
+    team's week 15-17 opponents (D/ST season fantasy points as the proxy).
+    Higher = tougher road. Labels are league-relative terciles."""
+    dst_pts = {p["team"]: p["points"] for p in db.all_players()
+               if p["position"] == "DST" and p.get("team")}
+    if not dst_pts:
+        return
+    avg_dst = sum(dst_pts.values()) / len(dst_pts)
+    sos = {}
+    for team in teams:
+        opps = []
+        for wk in PLAYOFF_WEEKS:
+            for home, away in by_week.get(wk, []):
+                if team == home:
+                    opps.append(away)
+                elif team == away:
+                    opps.append(home)
+        if not opps:
+            continue
+        score = sum(dst_pts.get(o, avg_dst) for o in opps) / len(opps)
+        sos[team] = {"opps": opps, "score": round(score, 1)}
+    if sos:
+        ranked = sorted(sos.values(), key=lambda s: s["score"])
+        lo = ranked[len(ranked) // 3]["score"]
+        hi = ranked[2 * len(ranked) // 3]["score"]
+        for s in sos.values():
+            s["label"] = "easy" if s["score"] <= lo else ("tough" if s["score"] >= hi else "avg")
+    db.meta_set("playoff_sos", sos)
+
+
+def fetch_week_projections(season, week):
+    entries = json.loads(_get(SLEEPER_WEEK_PROJECTIONS.format(season=season, week=week)))
+    return apply_week_projections(week, entries)
+
+
+def apply_week_projections(week, entries):
+    """Store one week of matchup projections, scored with ESPN rules."""
+    pos_by_id = {p["id"]: p["position"] for p in db.all_players()}
+    rows = []
+    for e in entries:
+        pid = str(e.get("player_id"))
+        pos = pos_by_id.get(pid)
+        if pos is None:
+            continue
+        stats = e.get("stats") or {}
+        pts = scoring.score_player(pos, stats, games=1)
+        rows.append({"player_id": pid, "points": round(pts, 1),
+                     "opp": e.get("opponent") or e.get("opp")})
+    if not rows:
+        raise RuntimeError(f"No week {week} projections matched the player pool")
+    db.set_week_proj(week, rows)
+    return len(rows)
 
 
 # --- FantasyPros market AAV (best-effort scrape) ------------------------------

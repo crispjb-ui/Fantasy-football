@@ -45,6 +45,21 @@ def _need_multiplier(player, me, state, cfg):
     return mult
 
 
+def rival_demand(player, state, my_id, cfg):
+    """How many rival teams still need this position AND can pay for him."""
+    pos = player["position"]
+    exp = player.get("expected_live") or player.get("expected_price") or player.get("value", 0)
+    n = 0
+    for t in state["teams"]:
+        if t["id"] == my_id or t["slots_left"] <= 0:
+            continue
+        os = t["open_starters"]
+        needs = os.get(pos, 0) > 0 or (pos in cfg["flex_positions"] and os.get("FLEX", 0) > 0)
+        if needs and t["max_bid"] >= exp * 0.75:
+            n += 1
+    return n
+
+
 def bid_advice(player, state, my_id, cfg):
     """Bid guidance for a nominated player, from MY seat."""
     me = _my_state(state, my_id)
@@ -71,6 +86,15 @@ def bid_advice(player, state, my_id, cfg):
         reasons.append("bench-only for you — let others pay retail")
     same_tier = [p for p in state["remaining"] if p["position"] == pos and p.get("tier") == player.get("tier")]
     reasons.append(f"{len(same_tier)} player(s) left in {pos} tier {player.get('tier', '?')}")
+    demand = rival_demand(player, state, my_id, cfg)
+    exp_live = player.get("expected_live") or player.get("expected_price")
+    if demand >= 3:
+        reasons.append(f"{demand} rivals still need a {pos} and can pay — expect a fight up to ~${exp_live:.0f}")
+    elif demand == 0 and me["slots_left"] > 0:
+        reasons.append(f"no rival needs a {pos} right now — you can win him cheap, open at $1 and crawl")
+    heat = state.get("pos_heat", {}).get(pos)
+    if heat and abs(heat - 1.0) >= 0.07:
+        reasons.append(f"{pos}s are selling {abs(heat - 1) * 100:.0f}% {'over' if heat > 1 else 'under'} sticker tonight")
     if state["inflation"] > 1.05:
         reasons.append(f"market is inflated ({state['inflation']:.2f}x) — expect prices above sticker")
     elif state["inflation"] < 0.95:
@@ -161,10 +185,10 @@ def targets_now(state, my_id, cfg, limit=8):
         mult = _need_multiplier(p, me, state, cfg)
         if mult < 0.9:            # starters/FLEX fits only — bench comes late
             continue
-        exp = p.get("expected_price", p["value"])
+        exp = p.get("expected_live") or p.get("expected_price", p["value"])
         if exp > me["max_bid"]:
             continue
-        edge = p.get("edge", 0) or 0
+        edge = p.get("edge_live", p.get("edge", 0)) or 0
         tier_left = len([
             q for q in state["remaining"]
             if q["position"] == p["position"] and q.get("tier") == p.get("tier")
@@ -316,9 +340,12 @@ def nomination_suggestions(state, my_id, cfg, limit=6):
     for p in sorted(remaining, key=lambda x: x["adj_value"], reverse=True)[:60]:
         mult = _need_multiplier(p, me, state, cfg)
         if mult < 0.9 and p["adj_value"] >= 15:
+            demand = rival_demand(p, my_id=my_id, state=state, cfg=cfg)
             burn.append({
                 "player": p,
-                "why": f"You don't need {p['position']} — nominate to drain rivals' budgets (worth ~${int(p['adj_value'])}).",
+                "demand": demand,
+                "why": (f"You don't need {p['position']} and {demand} rival(s) do — "
+                        f"nominate to start a ~${int(p.get('expected_live') or p['adj_value'])} bidding war."),
             })
         elif mult >= 1.0 and p["adj_value"] <= me["max_bid"]:
             targets.append({
@@ -330,6 +357,7 @@ def nomination_suggestions(state, my_id, cfg, limit=6):
     if max_other_bid < 10 or others_money < state["remaining_slots"] * 2:
         picks = targets[:limit]
         return {"mode": "strike", "note": "Rivals are nearly broke — nominate YOUR targets now.", "suggestions": picks}
+    burn.sort(key=lambda b: (-b["demand"], -b["player"]["adj_value"]))
     n_burn = (limit + 1) // 2
     return {
         "mode": "mixed",
@@ -346,6 +374,87 @@ def best_available(state, my_id, cfg, limit=25):
         out.append({**p, "fit": round(mult, 2)})
         if len(out) >= limit:
             break
+    return out
+
+
+# --- weekly lineup -----------------------------------------------------------
+
+def weekly_points(player, wk_proj, week):
+    """(points, opponent, source) for one week. Uses fetched matchup
+    projections when present, else season-pace estimate, respecting byes."""
+    entry = wk_proj.get(player["id"])
+    if entry is not None:
+        return entry["points"], entry.get("opp"), "weekly"
+    if player.get("bye") == week:
+        return 0.0, "BYE", "bye"
+    return round(player.get("points", 0) / config.GAMES_PER_SEASON, 1), None, "season-est"
+
+
+OUT_STATUSES = {"Out", "IR", "PUP", "Suspended", "Doubtful"}
+
+
+def optimal_lineup(my_players, cfg, week, wk_proj):
+    """Best legal starting lineup for the week + bench + warnings."""
+    pool = []
+    for p in my_players:
+        wpts, opp, src = weekly_points(p, wk_proj, week)
+        if (p.get("injury") or "") in OUT_STATUSES:
+            wpts = 0.0
+        pool.append({**p, "wpts": wpts, "opp": opp, "wsrc": src})
+    pool.sort(key=lambda p: p["wpts"], reverse=True)
+
+    lineup, used = [], set()
+
+    def take(pos_list, slot, count=1):
+        got = 0
+        for p in pool:
+            if got >= count:
+                break
+            if p["id"] in used or p["position"] not in pos_list:
+                continue
+            used.add(p["id"])
+            lineup.append({"slot": slot, "player": p})
+            got += 1
+        for _ in range(count - got):
+            lineup.append({"slot": slot, "player": None})
+
+    take(["QB"], "QB", cfg["starters"].get("QB", 1))
+    take(["RB"], "RB", cfg["starters"].get("RB", 2))
+    take(["WR"], "WR", cfg["starters"].get("WR", 2))
+    take(["TE"], "TE", cfg["starters"].get("TE", 1))
+    take(cfg["flex_positions"], "FLEX", cfg["starters"].get("FLEX", 1))
+    take(["DST"], "DST", cfg["starters"].get("DST", 1))
+    take(["K"], "K", cfg["starters"].get("K", 1))
+    bench = [p for p in pool if p["id"] not in used]
+
+    warnings = []
+    for row in lineup:
+        p = row["player"]
+        if p is None:
+            warnings.append(f"No healthy {row['slot']} on the roster — hit waivers.")
+        elif p["opp"] == "BYE":
+            warnings.append(f"{p['name']} is on BYE week {week} — replace him.")
+        elif (p.get("injury") or "") in OUT_STATUSES:
+            warnings.append(f"{p['name']} is {p['injury']} — replace him.")
+        elif p["wpts"] <= 1:
+            warnings.append(f"{p['name']} projects ~0 this week — check his status.")
+    total = round(sum(r["player"]["wpts"] for r in lineup if r["player"]), 1)
+    return {"lineup": lineup, "bench": bench, "total": total,
+            "warnings": warnings, "source": "weekly" if wk_proj else "season-est"}
+
+
+def stream_candidates(available, cfg, week, wk_proj, positions=("DST", "K"), limit=3):
+    """Best available weekly plays at streaming positions."""
+    out = {}
+    for pos in positions:
+        cands = []
+        for p in available:
+            if p["position"] != pos:
+                continue
+            wpts, opp, src = weekly_points(p, wk_proj, week)
+            cands.append({**p, "wpts": wpts, "opp": opp, "wsrc": src})
+        cands.sort(key=lambda p: p["wpts"], reverse=True)
+        out[pos] = cands[:limit]
     return out
 
 

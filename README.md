@@ -28,9 +28,10 @@ can dry-run a full draft immediately. Before your real draft, open
 | **Strategy** | League temperament (how hard your room overpays elites — auto-calibrated from last year's prices), three roster **blueprints** scored against your live budget & the remaining pool, **keeper advisor** (optimal 2 keepers for every team under the +$15/1-per-position rules), **pre-season trade finder** (players other teams are forced to forfeit). |
 | **Players** | Full sortable value board: projections, VORP, model/market/blended value, tier, inflation-adjusted price, market edge. |
 | **Keepers** | Lock every team's keepers pre-draft; budgets & inflation update instantly. |
-| **My Team** | Draft-day roster by slot + current roster after waiver moves. |
-| **Waivers** | Weekly upgrade targets vs. your weakest starters, Sleeper trending heat, **FAAB bid ranges** sized to your $200 season budget, transaction ledger. |
-| **Data & Setup** | One-click refresh (Sleeper projections, trending, FantasyPros AAV), **Google Sheet live draft sync**, CSV imports, last-year draft/standings import, team names, model settings. |
+| **Lineup** | Weekly **start/sit optimizer**: fetch matchup projections for any week, get the optimal legal lineup with bye/injury warnings, free agents who out-project your starters this week, and D/ST + K streaming picks. Falls back to season-pace estimates when weekly data isn't fetched. |
+| **Waivers** | Weekly upgrade targets vs. your weakest starters, Sleeper trending heat, **FAAB bid ranges** sized to your $200 budget and **shaded to what rivals can actually pay** (via ESPN sync), playoff-schedule badges, transaction ledger. |
+| **Trades** | In-season **trade analyzer** — build any trade and get a verdict from starter-lineup math, asset value, keeper-forward surplus and playoff schedules — plus **suggested win-win trades** scanned from every rival roster. |
+| **Data & Setup** | One-click refresh (Sleeper projections, trending, FantasyPros AAV, NFL schedule/byes), **ESPN league sync** (live rosters + league-wide FAAB via espn_s2/SWID cookies), **Google Sheet live draft sync**, CSV imports, last-year draft/standings import, JSON backup export, team names, model settings. |
 
 ## Draft night, step by step
 
@@ -74,4 +75,10 @@ python3 scripts/selftest.py   # 55 end-to-end checks against a scratch DB
   floors), recomputed on every pick — the classic keeper-league edge.
 - **Expected price** applies your league's measured elite premium to fair
   value (rescaled so total spend is conserved) — which is exactly why
-  mid-tier players carry positive *edge* in a star-chasing room.
+  mid-tier players carry positive *edge* in a star-chasing room. During the
+  draft, **per-position price heat** (actual sales vs. sticker, shrunk toward
+  1.0 with few samples) keeps expected prices honest in real time, and
+  **rival-demand counts** (who still needs the position and can pay) drive
+  nomination strategy and bidding-war warnings.
+- **Playoff SOS** rates each NFL team's weeks 15-17 opponents by projected
+  D/ST quality — a tiebreaker for waivers and trades, labeled easy/avg/tough.
