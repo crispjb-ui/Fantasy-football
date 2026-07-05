@@ -15,7 +15,8 @@ from . import db
 from .data_sources import norm_name
 
 ESPN_URL = ("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}"
-            "/segments/0/leagues/{league_id}?view=mTeam&view=mRoster&view=mSettings")
+            "/segments/0/leagues/{league_id}"
+            "?view=mTeam&view=mRoster&view=mSettings&view=mMatchup")
 
 # ESPN defaultPositionId -> position
 POSITION_MAP = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DST"}
@@ -131,11 +132,47 @@ def apply_league_payload(data):
     db.replace_rosters(roster_rows)
     db.meta_set("espn_faab_spent", faab_spent)
     db.meta_set("roster_source", "espn")
+
+    # W-L records (playoff-odds inputs)
+    records = {}
+    for t in teams:
+        local_id = mapping.get(str(t["id"]))
+        rec = ((t.get("record") or {}).get("overall")) or {}
+        if local_id is not None and rec:
+            records[str(local_id)] = {"wins": rec.get("wins", 0),
+                                      "losses": rec.get("losses", 0),
+                                      "pf": rec.get("pointsFor", 0)}
+    if records:
+        db.meta_set("records", records)
+
+    # Fantasy matchup schedule (who plays whom each week)
+    league_sched = {}
+    for m in data.get("schedule") or []:
+        wk = m.get("matchupPeriodId")
+        home = (m.get("home") or {}).get("teamId")
+        away = (m.get("away") or {}).get("teamId")
+        h, a = mapping.get(str(home)), mapping.get(str(away))
+        if wk and h and a:
+            league_sched.setdefault(str(wk), []).append([h, a])
+    if league_sched:
+        db.meta_set("league_schedule", league_sched)
+
+    # Playoff shape
+    sched_settings = ((data.get("settings") or {}).get("scheduleSettings")) or {}
+    overrides = db.meta_get("config_overrides", {})
+    if sched_settings.get("matchupPeriodCount"):
+        overrides["regular_season_weeks"] = sched_settings["matchupPeriodCount"]
+    if sched_settings.get("playoffTeamCount"):
+        overrides["playoff_teams"] = sched_settings["playoffTeamCount"]
+    db.meta_set("config_overrides", overrides)
+
     return {
         "teams": team_list,
         "rostered": len(roster_rows),
         "unmatched": unmatched[:10],
         "faab_spent": faab_spent,
+        "records": records,
+        "schedule_weeks": len(league_sched),
     }
 
 

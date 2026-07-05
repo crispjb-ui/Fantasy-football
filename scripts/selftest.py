@@ -377,6 +377,122 @@ check("trade suggestions find upgrades (rivals are stacked)", len(r["suggestions
 r, s = call("GET", "/api/export")
 check("export dumps everything", s == 200 and len(r["players"]) > 150 and "rosters" in r and "picks" in r)
 
+# --- consensus projections + floor/ceiling ----------------------------------------------------
+r, s = call("GET", "/api/players?q=bijan")
+bij = r["players"][0]
+check("floor/ceiling computed", bij["floor"] < bij["points"] < bij["ceiling"],
+      f"{bij['floor']} / {bij['points']} / {bij['ceiling']}")
+base_pts = bij["points"]
+csv2 = f"Player,Pos,FPTS\nBijan Robinson,RB,{base_pts + 40}\n"
+r, s = call("POST", "/api/import_csv", {"kind": "projections", "text": csv2, "source": "expertB"})
+check("second source imported", s == 200 and "expertB" in r["consensus_sources"], str(r))
+r, s = call("GET", "/api/players?q=bijan")
+bij2 = r["players"][0]
+check("consensus averages sources", base_pts < bij2["points"] < base_pts + 40,
+      f"{base_pts} -> {bij2['points']}")
+
+# --- vegas lines (fixture) ----------------------------------------------------------------------
+vegas_payload = {"events": [
+    {"competitions": [{"competitors": [
+        {"homeAway": "home", "team": {"abbreviation": "DET"}},
+        {"homeAway": "away", "team": {"abbreviation": "WSH"}}],
+        "odds": [{"overUnder": 54.5, "details": "DET -6.5"}]}]},
+    {"competitions": [{"competitors": [
+        {"homeAway": "home", "team": {"abbreviation": "CAR"}},
+        {"homeAway": "away", "team": {"abbreviation": "NE"}}],
+        "odds": [{"overUnder": 37.0, "details": "NE -3.0"}]}]},
+]}
+n = _ds2.apply_vegas(8, vegas_payload)
+check("vegas lines stored", n == 4, f"n={n}")
+r, s = call("GET", "/api/lineup?week=8")
+det_rows = [row["player"] for row in r["lineup"] if row["player"] and row["player"]["team"] == "DET"]
+check("implied totals on lineup", r["has_vegas"] and (not det_rows or det_rows[0]["implied"] == 30.5),
+      str([(p["name"], p.get("implied")) for p in det_rows]))
+
+# --- usage trends (fixture) ----------------------------------------------------------------------
+fa_wr = next(p for p in allp if p["position"] == "WR" and p["id"] not in rostered_all)
+for wk, touches in ((5, 3), (6, 6), (7, 12)):
+    _ds2.apply_week_stats(wk, [{"player_id": fa_wr["id"], "stats": {"rec_tgt": touches, "rush_att": 0}},
+                               {"player_id": allp[0]["id"], "stats": {"rec_tgt": 8, "rush_att": 10}}])
+r, s = call("GET", "/api/waivers?week=8")
+rec = next((x for x in r["recommendations"] if x["player"]["id"] == fa_wr["id"]), None)
+check("usage trend surfaces on waivers", rec is not None and rec["usage"] and rec["usage"]["trend"] == "up",
+      str(rec and rec["usage"]))
+
+# --- win probability + playoff odds (needs league schedule + records) ------------------------------
+from app import db as _db  # noqa: E402
+sched = {}
+for wk in range(1, 15):
+    pairs = [[1 + ((wk + i) % 10), 1 + ((wk + i + 5) % 10)] for i in range(5)]
+    seen_t = set()
+    games = []
+    for h, a in pairs:
+        if h not in seen_t and a not in seen_t and h != a:
+            games.append([h, a])
+            seen_t |= {h, a}
+    sched[str(wk)] = games
+_db.meta_set("league_schedule", sched)
+_db.meta_set("records", {str(i): {"wins": 10 - i, "losses": i - 1, "pf": 900 - i * 10} for i in range(1, 11)})
+r, s = call("GET", "/api/matchup?week=8")
+check("matchup responds", s == 200, str(r)[:120])
+if r["matchup"]:
+    check("win probability in range", 0.0 <= r["matchup"]["win_prob"] <= 1.0, str(r["matchup"]["win_prob"]))
+check("playoff odds computed", r["playoff_odds"] is not None and
+      abs(sum(o["odds"] for o in r["playoff_odds"]) - 4) < 0.6,
+      str(r["playoff_odds"])[:150])
+r, s = call("POST", "/api/trade/eval", {"give": [give_p["id"]], "get": [stud["id"]]})
+check("trade eval carries odds delta", r.get("playoff_odds") is None or
+      -1 <= r["playoff_odds"]["delta"] <= 1, str(r.get("playoff_odds")))
+
+# --- briefing --------------------------------------------------------------------------------------
+from app import server as _srv  # noqa: E402
+pre = _srv._snapshot()
+conn = _db.connect()
+my_ids_now = _srv._my_roster_ids()
+hurt = my_ids_now[0]
+conn.execute("UPDATE players SET injury='Out' WHERE id=?", (hurt,))
+conn.commit()
+items = _srv.build_briefing(pre)
+check("briefing flags my injury", any(i["kind"] == "injury" and i["mine"] for i in items), str(items)[:150])
+r, s = call("GET", "/api/briefing")
+check("briefing endpoint + unseen count", s == 200 and r["unseen"] >= 1, str(r)[:100])
+r, s = call("POST", "/api/briefing/seen", {})
+r, s = call("GET", "/api/briefing")
+check("briefing mark-seen", r["unseen"] == 0)
+
+# --- auto-refresh staleness predicate ----------------------------------------------------------------
+_db.meta_set("last_refresh", {"source": "sample"})
+check("auto-refresh skips sample data", _srv.should_auto_refresh() is False)
+_db.meta_set("last_refresh", {"source": "sleeper", "ts": 0})
+check("auto-refresh fires when stale", _srv.should_auto_refresh() is True)
+_db.meta_set("last_refresh", {"source": "sleeper", "ts": __import__("time").time()})
+check("auto-refresh skips fresh data", _srv.should_auto_refresh() is False)
+
+# --- mock draft --------------------------------------------------------------------------------------
+r, s = call("POST", "/api/mock/config", {"enabled": True})
+check("mock mode toggles", s == 200 and r["enabled"])
+r, s = call("POST", "/api/mock/nominate", {})
+check("AI nominates", s == 200 and r["player"]["name"], str(r)[:150])
+nom_pid = r["player"]["id"]
+r, s = call("POST", "/api/mock/resolve", {"player_id": nom_pid, "my_max": 0})
+check("mock auction resolves to a rival", s == 200 and not r["i_won"] and r["price"] >= 1, str(r))
+r2, s2 = call("GET", "/api/player?id=" + nom_pid)
+check("mock sale logged as a pick", r2["drafted"] is True)
+r, s = call("POST", "/api/mock/nominate", {})
+big_pid = r["player"]["id"]
+r, s = call("POST", "/api/mock/resolve", {"player_id": big_pid, "my_max": 480})
+check("huge max wins the mock auction", s == 200 and r["i_won"], str(r))
+check("winning price is rival+1 not my max", r["price"] <= r["top_rival_bid"] + 1, str(r))
+
+# --- IR + handcuff + archive ----------------------------------------------------------------------------
+r, s = call("GET", "/api/waivers?week=8")
+check("IR-eligible listed", any(p["id"] == hurt for p in r["ir_eligible"]), str(r["ir_eligible"])[:120])
+check("IR player not a drop candidate", all(p["id"] != hurt for p in r["drop_candidates"]))
+r, s = call("POST", "/api/season/archive", {})
+check("season archive", s == 200 and r["archived_picks"] > 0, str(r))
+r, s = call("GET", "/api/state")
+check("archive feeds history", r["history_rows"] > 140, f"rows={r['history_rows']}")
+
 srv.shutdown()
 print()
 if failures:

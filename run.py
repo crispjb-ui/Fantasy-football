@@ -8,9 +8,23 @@
 
 import argparse
 import threading
+import time
 import webbrowser
 
 from app import db, sample_data, server
+
+
+def _auto_refresh_loop():
+    """Background: refresh stale data every ~30 min check (20h staleness)."""
+    while True:
+        time.sleep(120)  # let the app settle before the first check
+        try:
+            result = server.auto_refresh_once()
+            if not result.get("skipped"):
+                print(f"[auto-refresh] ok={result.get('ok')} errors={result.get('errors')}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[auto-refresh] failed: {e}")
+        time.sleep(1800 - 120)
 
 
 def main():
@@ -26,6 +40,7 @@ def main():
         print(f"First run — loaded {n} sample players. Use Data > Refresh for live data.")
 
     srv = server.serve(args.host, args.port)
+    threading.Thread(target=_auto_refresh_loop, daemon=True).start()
     url = f"http://{args.host}:{args.port}/"
     print(f"Auction Copilot running at {url}  (Ctrl+C to stop)")
     if not args.no_open:

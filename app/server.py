@@ -7,11 +7,13 @@ import json
 import mimetypes
 import os
 import re
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import db, data_sources, espn, recommendations, sample_data, strategy, valuation
+from . import (analytics, db, data_sources, espn, mock, recommendations,
+               sample_data, strategy, valuation)
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
@@ -91,16 +93,120 @@ def api_state(q, body):
         "faab_spent": sum(t["faab"] for t in db.transactions()),
         "sheet": db.meta_get("sheet", {"url": "", "enabled": False}),
         "history_rows": len(db.history()),
+        "mock_mode": bool(db.meta_get("mock_mode", False)),
+        "nfl_state": db.meta_get("nfl_state"),
+        "briefing_unseen": len([i for i in db.meta_get("briefing", [])
+                                if i["ts"] > db.meta_get("briefing_seen", 0)]),
+        "consensus_sources": db.proj_source_names(),
     }
 
 
 def api_config(q, body):
     overrides = db.meta_get("config_overrides", {})
-    for k in ("market_blend", "season", "faab_budget", "elite_premium"):
+    for k in ("market_blend", "season", "faab_budget", "elite_premium", "auto_refresh"):
         if k in body:
             overrides[k] = body[k]
     db.meta_set("config_overrides", overrides)
     return {"ok": True, "config": db.get_config()}
+
+
+# --- briefing (what changed since you last looked) -----------------------------
+
+def _snapshot():
+    return {p["id"]: {"injury": p.get("injury"), "points": p.get("points", 0),
+                      "name": p["name"], "position": p["position"]}
+            for p in db.all_players()}
+
+
+def build_briefing(pre):
+    """Diff the pool against a pre-refresh snapshot into alert items."""
+    post = _snapshot()
+    mine = set(_my_roster_ids())
+    rostered = _all_rostered_ids()
+    now = time.time()
+    items = []
+    for pid, cur in post.items():
+        old = pre.get(pid)
+        if not old:
+            continue
+        important = pid in mine
+        oi, ci = old["injury"] or "", cur["injury"] or ""
+        if ci != oi and (important or (ci in ("IR", "Out", "Doubtful") and old["points"] >= 110)):
+            items.append({"ts": now, "kind": "injury", "mine": important,
+                          "player": cur["name"], "position": cur["position"],
+                          "detail": f"{oi or 'Healthy'} → {ci or 'Healthy'}"})
+        dp = cur["points"] - old["points"]
+        if old["points"] > 0 and abs(dp) >= (12 if important else 25):
+            items.append({"ts": now, "kind": "projection", "mine": important,
+                          "player": cur["name"], "position": cur["position"],
+                          "detail": f"season projection {old['points']:.0f} → {cur['points']:.0f} ({dp:+.0f})"})
+    adds = (db.meta_get("trending", {}) or {}).get("adds", {})
+    hot = sorted(((c, pid) for pid, c in adds.items()
+                  if pid not in rostered and pid in post and c >= 5000), reverse=True)[:3]
+    for c, pid in hot:
+        items.append({"ts": now, "kind": "trending", "mine": False,
+                      "player": post[pid]["name"], "position": post[pid]["position"],
+                      "detail": f"{c:,} Sleeper adds in 48h and still a free agent"})
+    if items:
+        db.meta_set("briefing", (items + db.meta_get("briefing", []))[:60])
+    return items
+
+
+def api_briefing(q, body):
+    items = db.meta_get("briefing", [])
+    seen = db.meta_get("briefing_seen", 0)
+    return {"items": items[:30], "unseen": len([i for i in items if i["ts"] > seen])}
+
+
+def api_briefing_seen(q, body):
+    db.meta_set("briefing_seen", time.time())
+    return {"ok": True}
+
+
+# --- auto refresh ----------------------------------------------------------------
+
+def should_auto_refresh():
+    cfg = db.get_config()
+    if not cfg.get("auto_refresh", True):
+        return False
+    lr = db.meta_get("last_refresh") or {}
+    if lr.get("source") != "sleeper":     # never overwrite before first manual pull
+        return False
+    age = time.time() - (lr.get("ts") or 0)
+    return age > cfg.get("auto_refresh_hours", 20) * 3600
+
+
+def auto_refresh_once():
+    """One background refresh pass; quiet on failure. Returns a summary."""
+    if not should_auto_refresh():
+        return {"skipped": True}
+    cfg = db.get_config()
+    pre = _snapshot()
+    out = {"skipped": False, "ok": [], "errors": []}
+    for name, fn in (
+        ("sleeper", lambda: data_sources.fetch_sleeper(cfg["season"])),
+        ("trending", data_sources.fetch_trending),
+        ("schedule", lambda: data_sources.fetch_schedule(cfg["season"])),
+        ("state", data_sources.fetch_nfl_state),
+    ):
+        try:
+            fn()
+            out["ok"].append(name)
+        except Exception as e:  # noqa: BLE001 — background best-effort
+            out["errors"].append(f"{name}: {e}")
+    week = (db.meta_get("nfl_state") or {}).get("week")
+    if week and "sleeper" in out["ok"]:
+        for name, fn in (("week_proj", lambda: data_sources.fetch_week_projections(cfg["season"], week)),
+                         ("vegas", lambda: data_sources.fetch_vegas(week)),
+                         ("usage", lambda: data_sources.fetch_week_stats(cfg["season"], max(1, week - 1)))):
+            try:
+                fn()
+                out["ok"].append(name)
+            except Exception as e:  # noqa: BLE001
+                out["errors"].append(f"{name}: {e}")
+    if out["ok"]:
+        out["briefing"] = len(build_briefing(pre))
+    return out
 
 
 def api_teams(q, body):
@@ -115,7 +221,8 @@ def api_sample(q, body):
 
 def api_refresh(q, body):
     cfg = db.get_config()
-    sources = body.get("sources") or ["sleeper", "trending", "fantasypros", "schedule"]
+    sources = body.get("sources") or ["sleeper", "trending", "fantasypros", "schedule", "state"]
+    pre = _snapshot()
     results, ok_any = {}, False
     if "sleeper" in sources:
         try:
@@ -146,7 +253,14 @@ def api_refresh(q, body):
             ok_any = True
         except Exception as e:  # noqa: BLE001
             results["schedule"] = {"ok": False, "error": str(e)}
-    return {"ok": ok_any, "results": results}
+    if "state" in sources:
+        try:
+            data_sources.fetch_nfl_state()
+            results["state"] = {"ok": True, **(db.meta_get("nfl_state") or {})}
+        except Exception as e:  # noqa: BLE001
+            results["state"] = {"ok": False, "error": str(e)}
+    new_alerts = build_briefing(pre) if ok_any else []
+    return {"ok": ok_any, "results": results, "new_alerts": len(new_alerts)}
 
 
 def _purge_sample_players():
@@ -162,8 +276,9 @@ def _purge_sample_players():
 
 
 def api_import_csv(q, body):
-    n = data_sources.import_csv(body["text"], body.get("kind", "projections"))
-    return {"ok": True, "imported": n}
+    n = data_sources.import_csv(body["text"], body.get("kind", "projections"),
+                                source=(body.get("source") or "csv").strip() or "csv")
+    return {"ok": True, "imported": n, "consensus_sources": db.proj_source_names()}
 
 
 def api_players(q, body):
@@ -265,7 +380,8 @@ def _slim(p, fit=False):
         return None
     keys = ["id", "name", "position", "team", "points", "value", "adj_value",
             "market_value", "tier", "pos_rank", "overall_rank", "injury",
-            "expected_price", "edge", "target_low", "target_high"]
+            "expected_price", "edge", "target_low", "target_high",
+            "expected_live", "edge_live", "floor", "ceiling", "volatility", "bye"]
     if fit:
         keys.append("fit")
     return {k: p.get(k) for k in keys}
@@ -490,13 +606,18 @@ def api_lineup(q, body):
                              "over": st["name"], "gain": round(wpts - st["wpts"], 1)})
     upgrades.sort(key=lambda u: -u["gain"])
 
+    vegas = (db.meta_get("vegas", {}) or {}).get(str(week), {})
+
     def wslim(p):
+        v = vegas.get(p.get("team") or "")
         return {**_slim(p), "wpts": p.get("wpts"), "opp": p.get("opp"),
-                "wsrc": p.get("wsrc"), "bye": p.get("bye"), "injury": p.get("injury")}
+                "wsrc": p.get("wsrc"), "bye": p.get("bye"), "injury": p.get("injury"),
+                "implied": v["implied"] if v else None}
 
     return {
         "week": week,
         "has_weekly_data": bool(wk_proj),
+        "has_vegas": bool(vegas),
         "roster_source": "espn" if _espn_rosters_active() else "draft",
         "lineup": [{"slot": r["slot"], "player": wslim(r["player"]) if r["player"] else None}
                    for r in result["lineup"]],
@@ -518,10 +639,15 @@ def api_week_refresh(q, body):
 def api_trade_eval(q, body):
     pool, cfg = _valued_pool()
     by_id = {p["id"]: p for p in pool}
-    result = strategy.evaluate_trade(by_id, _my_roster_ids(),
-                                     body.get("give") or [], body.get("get") or [], cfg)
+    give, get = body.get("give") or [], body.get("get") or []
+    result = strategy.evaluate_trade(by_id, _my_roster_ids(), give, get, cfg)
     result["give"] = [_slim(p) for p in result["give"]]
     result["get"] = [_slim(p) for p in result["get"]]
+    week = (db.meta_get("nfl_state") or {}).get("week") or 1
+    try:
+        result["playoff_odds"] = analytics.trade_odds_delta(by_id, cfg, week, give, get)
+    except Exception:  # noqa: BLE001 — odds are a bonus, never block the verdict
+        result["playoff_odds"] = None
     return result
 
 
@@ -536,6 +662,62 @@ def api_trade_suggest(q, body):
             for s in res["suggestions"]
         ],
     }
+
+
+def api_matchup(q, body):
+    week = int(q.get("week", ["1"])[0])
+    pool, cfg = _valued_pool()
+    by_id = {p["id"]: p for p in pool}
+    m = analytics.weekly_matchup(by_id, db.my_team_id(), week, cfg)
+    odds = analytics.playoff_odds(by_id, cfg, week)
+    names = {t["id"]: t["name"] for t in db.teams()}
+    return {
+        "matchup": m,
+        "playoff_odds": (
+            sorted(({"team": names.get(t, t), "odds": o, "me": t == db.my_team_id()}
+                    for t, o in odds.items()), key=lambda x: -x["odds"])
+            if odds else None),
+    }
+
+
+def api_vegas_refresh(q, body):
+    n = data_sources.fetch_vegas(int(body.get("week") or 1))
+    return {"ok": True, "teams": n}
+
+
+def api_usage_refresh(q, body):
+    cfg = db.get_config()
+    week = int(body.get("week") or 1)
+    n = data_sources.fetch_week_stats(cfg["season"], week)
+    return {"ok": True, "week": week, "players": n}
+
+
+def api_mock_config(q, body):
+    db.meta_set("mock_mode", bool(body.get("enabled")))
+    return {"ok": True, "enabled": bool(body.get("enabled"))}
+
+
+def api_mock_nominate(q, body):
+    pool, cfg, state = _draft_state()
+    nom = mock.ai_nomination(state, db.my_team_id(), cfg)
+    if nom is None:
+        return {"error": "no rivals left to nominate"}
+    return {"ok": True, "team": nom["team"], "player": _slim(nom["player"])}
+
+
+def api_mock_resolve(q, body):
+    pool, cfg, state = _draft_state()
+    player = next((p for p in state["remaining"] if p["id"] == body.get("player_id")), None)
+    if player is None:
+        return {"error": "player not on the board"}
+    result = mock.resolve_auction(state, db.my_team_id(), player, int(body.get("my_max") or 0), cfg)
+    return result if result.get("error") else {"ok": True, **result}
+
+
+def api_season_archive(q, body):
+    n, standings = strategy.archive_season()
+    return {"ok": True, "archived_picks": n, "standings_teams": standings,
+            "note": "This season now feeds next year's keeper advisor, trade finder and temperament calibration."}
 
 
 def api_export(q, body):
@@ -570,13 +752,31 @@ def api_waivers(q, body):
         for r in recs:
             r["faab"]["high"] = max(r["faab"]["low"], min(r["faab"]["high"], top_rival + 1))
     sos = db.meta_get("playoff_sos", {})
+    usage = db.usage_all()
+    my_rb_teams = {p["team"]: p for p in my_players
+                   if p["position"] == "RB" and p.get("team")}
     for r in recs:
-        s = sos.get(r["player"].get("team") or "")
+        pl = r["player"]
+        s = sos.get(pl.get("team") or "")
         r["playoff_sos"] = s.get("label") if s else None
+        trend = data_sources.usage_trend(usage.get(pl["id"], []))
+        r["usage"] = trend
+        if trend and trend["trend"] == "up":
+            r["score"] = round(r["score"] + 3, 2)
+        # Handcuff of one of MY RBs?
+        mine_rb = my_rb_teams.get(pl.get("team"))
+        if (pl["position"] == "RB" and mine_rb and
+                pl["points"] < mine_rb["points"]):
+            r["handcuff_for"] = mine_rb["name"]
+    recs.sort(key=lambda x: -x["score"])
+
+    # IR-eligible stashes: don't drop them, move them to IR for a free spot.
+    ir_eligible = [p for p in my_players if (p.get("injury") or "") in ("IR", "Out", "PUP")]
     my_sorted = sorted(my_players, key=lambda p: p["points"], reverse=True)
+    ir_ids = {p["id"] for p in ir_eligible}
     drop_candidates = [
         _slim(p) for p in sorted(
-            my_players,
+            (p for p in my_players if p["id"] not in ir_ids),
             key=lambda p: (p["points"] - p.get("replacement_pts", 0)),
         )[:6]
     ]
@@ -591,6 +791,7 @@ def api_waivers(q, body):
         ],
         "my_roster": [_slim(p) for p in my_sorted],
         "drop_candidates": drop_candidates,
+        "ir_eligible": [{**_slim(p), "injury": p.get("injury")} for p in ir_eligible],
         "trending_drops": trending.get("drops", {}),
         "transactions": [
             {**tx,
@@ -643,6 +844,15 @@ ROUTES = {
     ("POST", "/api/week/refresh"): api_week_refresh,
     ("POST", "/api/trade/eval"): api_trade_eval,
     ("GET", "/api/trade/suggest"): api_trade_suggest,
+    ("GET", "/api/matchup"): api_matchup,
+    ("POST", "/api/vegas/refresh"): api_vegas_refresh,
+    ("POST", "/api/usage/refresh"): api_usage_refresh,
+    ("GET", "/api/briefing"): api_briefing,
+    ("POST", "/api/briefing/seen"): api_briefing_seen,
+    ("POST", "/api/mock/config"): api_mock_config,
+    ("POST", "/api/mock/nominate"): api_mock_nominate,
+    ("POST", "/api/mock/resolve"): api_mock_resolve,
+    ("POST", "/api/season/archive"): api_season_archive,
     ("GET", "/api/export"): api_export,
     ("GET", "/api/waivers"): api_waivers,
     ("POST", "/api/transaction"): api_transaction,

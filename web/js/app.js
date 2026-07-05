@@ -80,7 +80,34 @@ function renderChips() {
   if (S.app.sheet && S.app.sheet.enabled) {
     chips.push(`<span class="chip good">Sheet sync <b>ON</b></span>`);
   }
+  if (S.app.mock_mode) {
+    chips.push(`<span class="chip warn">MOCK <b>DRAFT</b></span>`);
+  }
+  chips.push(`<span class="chip ${S.app.briefing_unseen ? "warn" : ""}" id="briefChip" style="cursor:pointer">🔔 <b>${S.app.briefing_unseen || 0}</b></span>`);
   $("#chips").innerHTML = chips.join("");
+  const bc = $("#briefChip");
+  if (bc) bc.onclick = toggleBriefing;
+}
+
+async function toggleBriefing() {
+  const existing = $("#briefPanel");
+  if (existing) { existing.remove(); return; }
+  const b = await api("/api/briefing");
+  api("/api/briefing/seen", {});
+  const div = document.createElement("div");
+  div.id = "briefPanel";
+  div.className = "panel";
+  div.style.cssText = "position:fixed;top:52px;right:16px;width:420px;max-height:70vh;overflow-y:auto;z-index:50;box-shadow:0 8px 30px rgba(0,0,0,.5)";
+  div.innerHTML = `<h2>What changed <button class="btn small" style="float:right" onclick="this.closest('#briefPanel').remove()">✕</button></h2>` +
+    (b.items.length ? b.items.map(i => `
+      <div class="result-row">
+        <span class="pos pos-${i.position}">${i.position}</span>
+        <span class="nm">${i.mine ? "⭐ " : ""}${esc(i.player)}<br>
+          <span class="meta">${i.kind === "injury" ? "🩹" : i.kind === "trending" ? "🔥" : "📈"} ${esc(i.detail)}</span></span>
+      </div>`).join("") : `<div class="note">No alerts yet — they appear after data refreshes when injuries, projections or trending change.</div>`);
+  document.body.appendChild(div);
+  S.app.briefing_unseen = 0;
+  renderChips();
 }
 
 /* Each (re)render gets a generation token; anything async checks the token
@@ -125,6 +152,15 @@ async function renderDraft(gen) {
         <input id="search" placeholder="Type a name…" autocomplete="off">
         <div class="results" id="results"></div>
       </div>
+      <div class="panel">
+        <h2>Mock draft</h2>
+        <div class="formrow">
+          <label><input type="checkbox" id="mockToggle" ${S.app.mock_mode ? "checked" : ""}> Practice mode</label>
+          <button class="btn" id="mockNom" ${S.app.mock_mode ? "" : "disabled"}>AI nominates ⏭</button>
+        </div>
+        <div class="note">9 simulated rivals bid with your league's temperament. Nominate + set your max on the card, or let the AI nominate. Reset picks in Data &amp; Setup when done.</div>
+        <div class="note" id="mockLog" style="margin-top:6px"></div>
+      </div>
     </div>
     <div>
       <div class="panel" id="cardPanel"><h2>Nominated player</h2>
@@ -148,8 +184,31 @@ async function renderDraft(gen) {
   $("#search").oninput = onSearchInput;
   $("#search").onkeydown = onSearchKeys;
   $("#undoBtn").onclick = doUndo;
+  $("#mockToggle").onchange = async e => {
+    await api("/api/mock/config", { enabled: e.target.checked });
+    await loadApp();
+    setView("draft");
+  };
+  $("#mockNom").onclick = async () => {
+    try {
+      const r = await api("/api/mock/nominate", {});
+      $("#mockLog").innerHTML = `<b>${esc(r.team.name)}</b> nominates <b>${esc(r.player.name)}</b> — set your max on the card.`;
+      selectPlayer(r.player.id);
+    } catch (e) { toast(e.message, true); }
+  };
   paintDraftPanels();
   $("#search").focus();
+}
+
+async function doMockResolve(pid) {
+  try {
+    const r = await api("/api/mock/resolve", { player_id: pid, my_max: +$("#salePrice").value || 0 });
+    $("#mockLog").innerHTML = (r.i_won ? "✅ " : "❌ ") + esc(r.note);
+    toast(r.note, !r.i_won);
+    S.card = null;
+    await refreshDraft();
+    $("#cardPanel").innerHTML = `<h2>Nominated player</h2><div class="note">${esc(r.note)}</div>`;
+  } catch (e) { toast(e.message, true); }
 }
 
 function paintDraftPanels() {
@@ -315,7 +374,7 @@ function paintCard() {
       ${a ? `<span class="verdict ${a.verdict}">${a.verdict.toUpperCase()}</span>` : ""}
       ${c.drafted ? `<span class="verdict pass">DRAFTED</span>` : ""}
     </div>
-    <div class="card-sub">${esc(p.team || "FA")} · ${p.points} proj pts · Tier ${p.tier} · ${p.position}${p.pos_rank} · #${p.overall_rank} overall${p.injury ? ` · <span style="color:var(--amber)">${esc(p.injury)}</span>` : ""}</div>`;
+    <div class="card-sub">${esc(p.team || "FA")} · ${p.points} proj pts${p.floor != null ? ` <span class="dim">(floor ${p.floor} / ceiling ${p.ceiling})</span>` : ""} · Tier ${p.tier} · ${p.position}${p.pos_rank} · #${p.overall_rank} overall${p.bye ? ` · bye ${p.bye}` : ""}${p.injury ? ` · <span style="color:var(--amber)">${esc(p.injury)}</span>` : ""}</div>`;
 
   if (c.drafted && c.pick) {
     const t = d.teams.find(x => x.id === c.pick.team_id);
@@ -357,6 +416,7 @@ function paintCard() {
       <span class="dim">to</span>
       <select id="saleTeam">${teamOpts}</select>
       <button class="btn primary" id="saleBtn">Log sale ⏎</button>
+      ${S.app.mock_mode ? `<button class="btn" id="mockBid" style="border-color:var(--amber)">🎲 Mock auction with my max</button>` : ""}
     </div>`;
   }
   $("#cardPanel").innerHTML = html;
@@ -366,6 +426,8 @@ function paintCard() {
     priceEl.focus(); priceEl.select();
     priceEl.onkeydown = e => { if (e.key === "Enter") doSale(p.id); };
     $("#saleBtn").onclick = () => doSale(p.id);
+    const mb = $("#mockBid");
+    if (mb) mb.onclick = () => doMockResolve(p.id);
   }
 }
 
@@ -644,8 +706,9 @@ async function renderKeepers(gen) {
 
 function wRow(p, slot) {
   if (!p) return `<tr><td><b>${slot}</b></td><td colspan="4" style="color:var(--red)">EMPTY — hit waivers</td></tr>`;
-  const flag = p.opp === "BYE" ? ' <span class="tag" style="color:var(--red)">BYE</span>'
-    : p.injury ? ` <span class="tag" style="color:var(--amber)">${esc(p.injury)}</span>` : "";
+  const flag = (p.opp === "BYE" ? ' <span class="tag" style="color:var(--red)">BYE</span>'
+    : p.injury ? ` <span class="tag" style="color:var(--amber)">${esc(p.injury)}</span>` : "")
+    + (p.implied != null ? ` <span class="tag" title="Vegas implied team total" style="color:${p.implied >= 24 ? "var(--green)" : p.implied <= 17 ? "var(--red)" : "var(--muted)"}">${p.implied}</span>` : "");
   return `<tr>
     ${slot !== undefined ? `<td><b>${slot}</b></td>` : ""}
     <td><span class="pos pos-${p.position}">${p.position}</span> ${esc(p.name)} <span class="dim">${esc(p.team || "")}</span>${flag}</td>
@@ -656,20 +719,49 @@ function wRow(p, slot) {
 }
 
 async function renderLineup(gen) {
-  const L = await api(`/api/lineup?week=${S.waiverWeek}`);
+  const [L, M] = await Promise.all([
+    api(`/api/lineup?week=${S.waiverWeek}`),
+    api(`/api/matchup?week=${S.waiverWeek}`),
+  ]);
   if (stale(gen)) return;
+  const m = M.matchup;
+  const matchupHtml = m ? `
+    <div class="panel">
+      <h2>Week ${m.week} matchup — vs ${esc(m.opponent)}</h2>
+      <div class="big-vals">
+        <div class="bigval hero"><div class="n">${(m.win_prob * 100).toFixed(0)}%</div><div class="l">win probability</div></div>
+        <div class="bigval"><div class="n">${m.my_total}</div><div class="l">my proj</div></div>
+        <div class="bigval"><div class="n">${m.opp_total}</div><div class="l">their proj</div></div>
+      </div>
+      ${m.pivots.length ? `<div class="note" style="margin-bottom:4px"><b>Variance pivots:</b></div>` +
+        m.pivots.map(pv => `<div class="note">↔ Start <b>${esc(pv.in)}</b> over ${esc(pv.out)} (${pv.slot}) — ${esc(pv.why)}</div>`).join("") : ""}
+    </div>` : "";
+  const oddsHtml = M.playoff_odds ? `
+    <div class="panel">
+      <h2>Playoff odds (rest-of-season simulation)</h2>
+      ${M.playoff_odds.map(o => `
+        <div class="teamrow ${o.me ? "me" : ""}">
+          <span class="tname">${esc(o.team)}${o.me ? " ★" : ""}</span>
+          <span class="b"></span><span class="b"></span>
+          <span class="b ${o.odds >= 0.5 ? "money" : "dim"}">${(o.odds * 100).toFixed(0)}%</span>
+        </div>`).join("")}
+    </div>` : "";
   $("#view").innerHTML = `
   <div class="panel">
     <div class="filters">
       <label class="dim">NFL Week</label>
       <input type="number" id="lWeek" min="1" max="18" value="${L.week}" style="width:70px;padding:7px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)">
       <button class="btn primary" id="lRefresh">↻ Fetch week ${L.week} matchup projections</button>
+      <button class="btn" id="lVegas">Vegas lines</button>
+      <button class="btn" id="lUsage">Usage (wk ${Math.max(1, L.week - 1)} actuals)</button>
       <span class="chip ${L.has_weekly_data ? "good" : "warn"}">${L.has_weekly_data ? "Matchup projections loaded" : "Using season-pace estimates — fetch weekly data"}</span>
+      ${L.has_vegas ? `<span class="chip good">Vegas <b>ON</b></span>` : ""}
       <span class="chip">Roster: <b>${L.roster_source === "espn" ? "ESPN (live)" : "draft log"}</b></span>
       <span class="note" id="lStatus"></span>
     </div>
     ${L.warnings.length ? `<div class="note" style="color:var(--amber)">${L.warnings.map(esc).join("<br>")}</div>` : ""}
   </div>
+  ${matchupHtml}
   <div class="grid2">
     <div class="panel">
       <h2>Optimal lineup — week ${L.week} <span class="hint money">${L.total} projected pts</span></h2>
@@ -690,6 +782,7 @@ async function renderLineup(gen) {
             <span class="nm">${esc(u.player.name)} <span class="meta">${u.player.wpts} pts${u.player.opp ? " vs " + esc(u.player.opp) : ""} — beats ${esc(u.over)} by ${u.gain}</span></span>
             <span class="val">+${u.gain}</span></div>`).join("")}
       </div>` : ""}
+      ${oddsHtml}
       <div class="panel">
         <h2>Streaming — best available D/ST &amp; K this week</h2>
         ${["DST", "K"].map(pos => `
@@ -707,6 +800,22 @@ async function renderLineup(gen) {
     try {
       const r = await api("/api/week/refresh", { week: S.waiverWeek });
       toast(`Week ${r.week}: ${r.players} matchup projections loaded`);
+      setView(S.view);
+    } catch (e) { $("#lStatus").textContent = "❌ " + e.message; }
+  };
+  $("#lVegas").onclick = async () => {
+    $("#lStatus").textContent = "Fetching Vegas lines…";
+    try {
+      const r = await api("/api/vegas/refresh", { week: S.waiverWeek });
+      toast(`Vegas lines for ${r.teams} teams`);
+      setView(S.view);
+    } catch (e) { $("#lStatus").textContent = "❌ " + e.message; }
+  };
+  $("#lUsage").onclick = async () => {
+    $("#lStatus").textContent = "Fetching usage…";
+    try {
+      const r = await api("/api/usage/refresh", { week: Math.max(1, S.waiverWeek - 1) });
+      toast(`Usage stats: ${r.players} players (week ${r.week})`);
       setView(S.view);
     } catch (e) { $("#lStatus").textContent = "❌ " + e.message; }
   };
@@ -796,7 +905,8 @@ async function renderTrades(gen) {
           (${r.delta_per_week >= 0 ? "+" : ""}${r.delta_per_week}/week) · asset value ${r.value_delta >= 0 ? "+" : ""}$${r.value_delta}
           · roster spots ${r.roster_spots_delta >= 0 ? "+" : ""}${r.roster_spots_delta}</div>
         ${r.keeper_notes.map(n => `<div class="note" style="color:var(--green)">🌱 ${esc(n)}</div>`).join("")}
-        ${r.sos_notes.map(n => `<div class="note">📅 ${esc(n)}</div>`).join("")}`;
+        ${r.sos_notes.map(n => `<div class="note">📅 ${esc(n)}</div>`).join("")}
+        ${r.playoff_odds ? `<div class="note" style="color:${r.playoff_odds.delta >= 0 ? "var(--green)" : "var(--red)"}">🎯 Playoff odds ${(r.playoff_odds.before * 100).toFixed(0)}% → ${(r.playoff_odds.after * 100).toFixed(0)}% (${r.playoff_odds.delta >= 0 ? "+" : ""}${(r.playoff_odds.delta * 100).toFixed(0)}%)</div>` : ""}`;
     } catch (e) { toast(e.message, true); }
   };
 }
@@ -824,14 +934,16 @@ async function renderWaivers(gen) {
     <div class="panel">
       <h2>Top waiver targets</h2>
       <div class="table-wrap">${w.recommendations.length ? `<table>
-        <tr><th>Player</th><th>Upgrades over</th><th class="r">+Pts</th><th class="r">Trend</th><th class="r">Bid</th><th></th></tr>` +
+        <tr><th>Player</th><th>Upgrades over</th><th class="r">+Pts</th><th class="r">Usage</th><th class="r">Trend</th><th class="r">Bid</th><th></th></tr>` +
         w.recommendations.map(r => `
         <tr>
           <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span>${
             r.playoff_sos === "easy" ? ' <span class="tag" style="color:var(--green)" title="easy playoff schedule (wks 15-17)">SOS+</span>' :
-            r.playoff_sos === "tough" ? ' <span class="tag" style="color:var(--red)" title="tough playoff schedule (wks 15-17)">SOS−</span>' : ""}</td>
+            r.playoff_sos === "tough" ? ' <span class="tag" style="color:var(--red)" title="tough playoff schedule (wks 15-17)">SOS−</span>' : ""}${
+            r.handcuff_for ? ` <span class="tag" style="color:var(--purple)" title="backs up your starter">🔗 ${esc(r.handcuff_for)}</span>` : ""}</td>
           <td class="dim">${esc(r.upgrade_over || "—")}</td>
           <td class="r ${r.gap_pts > 0 ? "money" : "dim"}">${r.gap_pts > 0 ? "+" + r.gap_pts : r.gap_pts}</td>
+          <td class="r ${r.usage && r.usage.trend === "up" ? "money" : "dim"}" title="touches (targets+carries) by week">${r.usage ? esc(r.usage.text) + (r.usage.trend === "up" ? " 📈" : r.usage.trend === "down" ? " 📉" : "") : ""}</td>
           <td class="r dim">${r.trending_adds ? "🔥" + r.trending_adds : ""}</td>
           <td class="r"><b>$${r.faab.low}–$${r.faab.high}</b></td>
           <td class="r"><button class="btn small" data-add="${esc(r.player.id)}" data-nm="${esc(r.player.name)}" data-bid="${r.faab.high}">claim</button></td>
@@ -848,6 +960,12 @@ async function renderWaivers(gen) {
         <div class="formrow"><label>FAAB spent</label><input type="number" id="txFaab" min="0" max="${w.faab_left}" value="0" style="width:90px"></div>
         <div class="formrow"><button class="btn primary" id="txBtn">Log transaction</button></div>
       </div>
+      ${w.ir_eligible && w.ir_eligible.length ? `<div class="panel">
+        <h2>IR slot</h2>
+        ${w.ir_eligible.map(p => `
+          <div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
+            <span class="nm">${esc(p.name)} <span class="meta">${esc(p.injury)} — move to your IR slot to open a roster spot instead of dropping</span></span></div>`).join("")}
+      </div>` : ""}
       <div class="panel">
         <h2>Drop candidates (my weakest)</h2>
         ${w.drop_candidates.map(p => `<div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
@@ -978,8 +1096,10 @@ async function renderData(gen) {
         <h2>CSV import</h2>
         <div class="note">Projections: columns <span class="kbd">Player, Pos, Team, FPTS</span> (or granular stats like
           <span class="kbd">pass_yd, rush_td…</span>). Market values: <span class="kbd">Player, Pos, AAV</span>.
-          Great for FantasyPros export overrides.</div>
-        <div class="formrow"><select id="csvKind"><option value="projections">Projections</option><option value="aav">Auction values (AAV)</option></select></div>
+          Each projection <b>source label</b> becomes one voice in the consensus (points = average across sources
+          — averaging beats any single source).${(a.consensus_sources || []).length ? ` Loaded sources: <b>${a.consensus_sources.map(esc).join(", ")}</b>.` : ""}</div>
+        <div class="formrow"><select id="csvKind"><option value="projections">Projections</option><option value="aav">Auction values (AAV)</option></select>
+          <label>Source label</label><input type="text" id="csvSource" value="csv" style="width:130px"></div>
         <textarea id="csvText" placeholder="Paste CSV here…"></textarea>
         <div class="formrow"><button class="btn primary" id="csvBtn">Import</button></div>
       </div>
@@ -1002,6 +1122,8 @@ async function renderData(gen) {
           <span class="note">0 = pure projection model, 1 = pure market AAV</span></div>
         <div class="formrow"><label>Elite premium</label><input type="number" id="setPrem" value="${a.config.elite_premium}" min="0" max="0.6" step="0.02" style="width:90px">
           <span class="note">How much your room overpays top players (0.20 = 20%). Auto-calibrate it on the Strategy tab.</span></div>
+        <div class="formrow"><label>Auto-refresh</label>
+          <label><input type="checkbox" id="setAuto" ${a.config.auto_refresh ? "checked" : ""}> refresh stale data in the background (~every ${a.config.auto_refresh_hours}h) and build the 🔔 briefing</label></div>
         <div class="formrow"><button class="btn primary" id="setSave">Save settings</button></div>
       </div>
       <div class="panel">
@@ -1009,7 +1131,8 @@ async function renderData(gen) {
         <div class="formrow"><button class="btn danger" id="resetDraft">Reset draft picks</button>
           <button class="btn danger" id="resetAll">Reset picks + keepers</button>
           <button class="btn" id="loadSample">Reload sample data</button>
-          <button class="btn" id="exportBtn">⬇ Export backup (JSON)</button></div>
+          <button class="btn" id="exportBtn">⬇ Export backup (JSON)</button>
+          <button class="btn" id="archiveBtn">📦 Archive season → history</button></div>
       </div>
     </div>
   </div>`;
@@ -1030,8 +1153,9 @@ async function renderData(gen) {
 
   $("#csvBtn").onclick = async () => {
     try {
-      const r = await api("/api/import_csv", { kind: $("#csvKind").value, text: $("#csvText").value });
-      toast(`Imported ${r.imported} rows`);
+      const r = await api("/api/import_csv", { kind: $("#csvKind").value, text: $("#csvText").value,
+                                               source: $("#csvSource").value });
+      toast(`Imported ${r.imported} rows` + (r.consensus_sources ? ` — consensus: ${r.consensus_sources.join(", ")}` : ""));
     } catch (e) { toast(e.message, true); }
   };
 
@@ -1050,6 +1174,7 @@ async function renderData(gen) {
       season: +$("#setSeason").value,
       market_blend: +$("#setBlend").value,
       elite_premium: +$("#setPrem").value,
+      auto_refresh: $("#setAuto").checked,
     });
     toast("Settings saved");
   };
@@ -1101,6 +1226,13 @@ async function renderData(gen) {
     toast(r.note);
     await loadApp();
     setView(S.view);
+  };
+  $("#archiveBtn").onclick = async () => {
+    if (!confirm("Write this season's draft prices + standings into history (feeds next year's keeper advisor)?")) return;
+    try {
+      const r = await api("/api/season/archive", {});
+      toast(`Archived ${r.archived_picks} picks. ${r.note}`);
+    } catch (e) { toast(e.message, true); }
   };
   $("#exportBtn").onclick = async () => {
     const data = await api("/api/export");

@@ -73,10 +73,20 @@ def compute_values(players, cfg):
     discretionary = total_money - total_slots                       # above-$1 dollars
 
     pos_mult = cfg.get("position_value_mult", {})
+    season_cv = cfg.get("pos_season_cv", {})
     for p in pool:
         p["replacement_pts"] = repl.get(p["position"], 0.0)
         raw = max(0.0, p["points"] - p["replacement_pts"])
         p["vorp"] = raw * pos_mult.get(p["position"], 1.0)
+        # Floor/ceiling: source disagreement when we have it, else a
+        # position volatility prior (widened for rookies/2nd-year players).
+        sigma = max(p.get("proj_sigma") or 0.0,
+                    season_cv.get(p["position"], 0.2) * p["points"])
+        if (p.get("years_exp") or 9) <= 1:
+            sigma *= 1.3
+        p["floor"] = round(max(0.0, p["points"] - sigma), 1)
+        p["ceiling"] = round(p["points"] + sigma, 1)
+        p["volatility"] = round(sigma / p["points"], 2) if p["points"] > 0 else 0.0
 
     vorp_sum = sum(p["vorp"] for p in pool) or 1.0
     rate = discretionary / vorp_sum

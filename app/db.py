@@ -90,6 +90,20 @@ CREATE TABLE IF NOT EXISTS week_proj (
     opp TEXT,
     PRIMARY KEY (week, player_id)
 );
+CREATE TABLE IF NOT EXISTS proj_sources (
+    source TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    points REAL DEFAULT 0,
+    PRIMARY KEY (source, player_id)
+);
+CREATE TABLE IF NOT EXISTS week_stats (
+    week INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    targets REAL DEFAULT 0,
+    carries REAL DEFAULT 0,
+    touches REAL DEFAULT 0,
+    PRIMARY KEY (week, player_id)
+);
 """
 
 
@@ -102,7 +116,8 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
         # Migrate databases created before these columns existed.
-        for col in ("age INTEGER", "years_exp INTEGER", "espn_id TEXT"):
+        for col in ("age INTEGER", "years_exp INTEGER", "espn_id TEXT",
+                    "depth INTEGER", "proj_sigma REAL"):
             try:
                 conn.execute(f"ALTER TABLE players ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -299,6 +314,75 @@ def remove_transaction(tx_id):
 
 def transactions():
     return [dict(r) for r in connect().execute("SELECT * FROM transactions ORDER BY id").fetchall()]
+
+
+# --- consensus projections -----------------------------------------------------
+
+def set_proj_source(source, points_by_id):
+    conn = connect()
+    conn.execute("DELETE FROM proj_sources WHERE source=?", (source,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO proj_sources (source, player_id, points) VALUES (?,?,?)",
+        [(source, pid, pts) for pid, pts in points_by_id.items() if pts > 0],
+    )
+    conn.commit()
+
+
+def proj_source_names():
+    return [r[0] for r in connect().execute(
+        "SELECT DISTINCT source FROM proj_sources ORDER BY source").fetchall()]
+
+
+def rebuild_consensus():
+    """players.points <- mean across projection sources; proj_sigma <- their
+    disagreement. With one source this is a no-op beyond sigma=0."""
+    conn = connect()
+    rows = conn.execute("SELECT player_id, points FROM proj_sources").fetchall()
+    acc = {}
+    for r in rows:
+        acc.setdefault(r["player_id"], []).append(r["points"])
+    for pid, pts in acc.items():
+        mean = sum(pts) / len(pts)
+        var = sum((x - mean) ** 2 for x in pts) / len(pts)
+        conn.execute("UPDATE players SET points=?, proj_sigma=? WHERE id=?",
+                     (round(mean, 1), round(var ** 0.5, 1), pid))
+    conn.commit()
+    return len(acc)
+
+
+# --- usage (actual weekly stats) --------------------------------------------------
+
+def set_week_stats(week, rows):
+    conn = connect()
+    conn.execute("DELETE FROM week_stats WHERE week=?", (week,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO week_stats (week, player_id, targets, carries, touches) "
+        "VALUES (?,?,?,?,?)",
+        [(week, r["player_id"], r["targets"], r["carries"], r["touches"]) for r in rows],
+    )
+    conn.commit()
+
+
+def usage_weeks(player_id, limit=4):
+    """Most recent stored usage rows for a player, oldest first."""
+    rows = connect().execute(
+        "SELECT * FROM week_stats WHERE player_id=? ORDER BY week DESC LIMIT ?",
+        (player_id, limit)).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+def usage_all(limit_weeks=4):
+    """{player_id: [rows oldest-first]} across the most recent stored weeks."""
+    weeks = [r[0] for r in connect().execute(
+        "SELECT DISTINCT week FROM week_stats ORDER BY week DESC LIMIT ?", (limit_weeks,))]
+    if not weeks:
+        return {}
+    marks = ",".join("?" * len(weeks))
+    out = {}
+    for r in connect().execute(
+            f"SELECT * FROM week_stats WHERE week IN ({marks}) ORDER BY week", weeks):
+        out.setdefault(r["player_id"], []).append(dict(r))
+    return out
 
 
 # --- live rosters (ESPN sync) & weekly projections ------------------------------

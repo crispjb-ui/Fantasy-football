@@ -33,6 +33,16 @@ LEAGUE = {
     # Dampen K/DST value: projections overstate their edge because weekly
     # variance is huge — real auctions pay $1-3 for kickers and defenses.
     "position_value_mult": {"K": 0.12, "DST": 0.25},
+    # Auto-refresh live data in the background when it's stale (hours).
+    "auto_refresh": True,
+    "auto_refresh_hours": 20,
+    # Volatility priors: sigma/mean by position. Season CV drives floor/
+    # ceiling pricing; weekly CV drives win-probability and start/sit tilts.
+    "pos_season_cv": {"QB": 0.12, "RB": 0.22, "WR": 0.20, "TE": 0.24, "K": 0.15, "DST": 0.15},
+    "pos_weekly_cv": {"QB": 0.35, "RB": 0.45, "WR": 0.52, "TE": 0.55, "K": 0.55, "DST": 0.55},
+    # Fantasy regular season / playoff shape (overwritten by ESPN sync).
+    "regular_season_weeks": 14,
+    "playoff_teams": 4,
     # League temperament: how much this room overpays for elite players
     # relative to fair value (0.20 = elites go ~20% over sticker, funded by
     # discounts on the mid/low tiers). Auto-calibrated from imported

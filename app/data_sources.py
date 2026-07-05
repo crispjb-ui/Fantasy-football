@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import re
+import time
 import unicodedata
 import urllib.request
 
@@ -92,11 +93,19 @@ def fetch_sleeper(season):
             "age": info.get("age"),
             "years_exp": info.get("years_exp"),
             "espn_id": str(info["espn_id"]) if info.get("espn_id") else None,
+            "depth": info.get("depth_chart_order"),
         })
     if not rows:
         raise RuntimeError(f"Sleeper returned no usable {season} projections")
     db.upsert_players(rows, source="sleeper")
-    db.meta_set("last_refresh", {"source": "sleeper", "season": season, "players": len(rows)})
+    conn = db.connect()
+    for r in rows:
+        conn.execute("UPDATE players SET depth=? WHERE id=?", (r["depth"], r["id"]))
+    conn.commit()
+    db.set_proj_source("sleeper", {r["id"]: r["points"] for r in rows})
+    db.rebuild_consensus()
+    db.meta_set("last_refresh", {"source": "sleeper", "season": season, "players": len(rows),
+                                 "ts": time.time()})
     return len(rows), warnings
 
 
@@ -108,6 +117,14 @@ def fetch_trending():
     return adds, drops
 
 
+SLEEPER_STATE = "https://api.sleeper.app/v1/state/nfl"
+SLEEPER_WEEK_STATS = (
+    "https://api.sleeper.com/stats/nfl/{season}/{week}?season_type=regular"
+    "&position[]=QB&position[]=RB&position[]=WR&position[]=TE&order_by=pts_std"
+)
+ESPN_SCOREBOARD = ("https://site.api.espn.com/apis/site/v2/sports/football/nfl/"
+                   "scoreboard?seasontype=2&week={week}")
+ESPN_TEAM_FIX = {"WSH": "WAS", "LAR": "LAR", "JAX": "JAX"}
 SLEEPER_SCHEDULE = "https://api.sleeper.com/schedule/nfl/regular/{season}"
 SLEEPER_WEEK_PROJECTIONS = (
     "https://api.sleeper.com/projections/nfl/{season}/{week}?season_type=regular"
@@ -203,6 +220,96 @@ def apply_week_projections(week, entries):
         raise RuntimeError(f"No week {week} projections matched the player pool")
     db.set_week_proj(week, rows)
     return len(rows)
+
+
+def fetch_nfl_state():
+    """Current NFL week/season from Sleeper — powers auto-refresh + defaults."""
+    state = json.loads(_get(SLEEPER_STATE))
+    db.meta_set("nfl_state", {"week": state.get("week") or 1,
+                              "season": state.get("season"),
+                              "season_type": state.get("season_type")})
+    return state
+
+
+def fetch_vegas(week):
+    payload = json.loads(_get(ESPN_SCOREBOARD.format(week=week)))
+    return apply_vegas(week, payload)
+
+
+def apply_vegas(week, payload):
+    """Store Vegas totals/spreads per NFL team for a week (ESPN scoreboard).
+    Implied team total = total/2 - spread/2 (spread negative for favorites)."""
+    lines = {}
+    for ev in payload.get("events", []):
+        for comp in ev.get("competitions", []):
+            comps = comp.get("competitors") or []
+            odds = (comp.get("odds") or [{}])[0]
+            total = odds.get("overUnder")
+            details = odds.get("details") or ""   # e.g. "KC -6.5"
+            if total is None or len(comps) != 2:
+                continue
+            abbrs = {}
+            for c in comps:
+                ab = ((c.get("team") or {}).get("abbreviation") or "").upper()
+                abbrs[c.get("homeAway")] = ESPN_TEAM_FIX.get(ab, ab)
+            m = re.match(r"([A-Z]+)\s*(-?\d+(?:\.\d+)?)", details.upper())
+            fav, mag = (ESPN_TEAM_FIX.get(m.group(1), m.group(1)), abs(float(m.group(2)))) if m else (None, 0.0)
+            for side, opp_side in (("home", "away"), ("away", "home")):
+                team, opp = abbrs.get(side), abbrs.get(opp_side)
+                if not team:
+                    continue
+                spread = -mag if team == fav else (mag if fav else 0.0)
+                lines[team] = {"total": total, "spread": spread,
+                               "implied": round(total / 2 - spread / 2, 1), "opp": opp}
+    if not lines:
+        raise RuntimeError(f"No betting lines found for week {week}")
+    vegas = db.meta_get("vegas", {})
+    vegas[str(week)] = lines
+    db.meta_set("vegas", vegas)
+    return len(lines)
+
+
+def fetch_week_stats(season, week):
+    entries = json.loads(_get(SLEEPER_WEEK_STATS.format(season=season, week=week)))
+    return apply_week_stats(week, entries)
+
+
+def apply_week_stats(week, entries):
+    """Store actual usage (targets/carries/touches) for trend detection."""
+    known = {p["id"] for p in db.all_players()}
+    rows = []
+    for e in entries:
+        pid = str(e.get("player_id"))
+        if pid not in known:
+            continue
+        st = e.get("stats") or {}
+        targets = st.get("rec_tgt", 0) or 0
+        carries = st.get("rush_att", 0) or 0
+        if targets + carries <= 0:
+            continue
+        rows.append({"player_id": pid, "targets": targets, "carries": carries,
+                     "touches": targets + carries})
+    if not rows:
+        raise RuntimeError(f"No week {week} usage stats matched the pool")
+    db.set_week_stats(week, rows)
+    return len(rows)
+
+
+def usage_trend(rows):
+    """Classify a player's recent usage rows (oldest-first) into a trend."""
+    if len(rows) < 2:
+        return None
+    touches = [r["touches"] for r in rows]
+    last, prior = touches[-1], touches[:-1]
+    base = sum(prior) / len(prior)
+    if last >= max(8, base * 1.3):
+        trend = "up"
+    elif last <= base * 0.6:
+        trend = "down"
+    else:
+        trend = "flat"
+    return {"trend": trend, "touches": touches,
+            "text": "→".join(str(int(t)) for t in touches)}
 
 
 # --- FantasyPros market AAV (best-effort scrape) ------------------------------
@@ -345,8 +452,10 @@ def _find_col(fieldnames, wanted):
     return None
 
 
-def import_csv(text, kind):
-    """kind: 'projections' (name/pos/points or granular stats) or 'aav'."""
+def import_csv(text, kind, source="csv"):
+    """kind: 'projections' (name/pos/points or granular stats) or 'aav'.
+    `source` labels the projection set — each label is one voice in the
+    consensus (players.points = mean across sources)."""
     reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
     if not reader.fieldnames:
         raise RuntimeError("CSV has no header row")
@@ -410,6 +519,8 @@ def import_csv(text, kind):
         count += 1
     if rows:
         db.upsert_players(rows, source="csv")
+        db.set_proj_source(source or "csv", {r["id"]: r["points"] for r in rows})
+        db.rebuild_consensus()
     if count == 0:
         raise RuntimeError("No rows matched/imported — check the column headers")
     return count

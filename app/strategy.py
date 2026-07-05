@@ -408,6 +408,40 @@ def suggest_trades(pool_by_id, cfg, limit=8):
     return {"suggestions": deduped[:limit], "note": ""}
 
 
+# --- season archive ---------------------------------------------------------------
+
+def archive_season():
+    """Write this season's auction results + standings into history, so next
+    year's keeper advisor / trade finder / temperament calibration are
+    pre-loaded. Safe to run repeatedly (replaces the season's rows)."""
+    cfg = db.get_config()
+    players = {p["id"]: p for p in db.all_players()}
+    rows = []
+    for pk in db.picks():
+        pl = players.get(pk["player_id"])
+        rows.append({
+            "team_id": pk["team_id"],
+            "player_name": pl["name"] if pl else pk["player_id"],
+            "player_id": pk["player_id"],
+            "position": pl["position"] if pl else None,
+            "price": pk["price"],
+        })
+    if not rows:
+        raise RuntimeError("No picks to archive — nothing was drafted this season")
+    db.replace_history(cfg["season"], rows)
+
+    records = db.meta_get("records", {})
+    standings = {}
+    if records:
+        ranked = sorted(records.items(),
+                        key=lambda kv: (kv[1].get("wins", 0), kv[1].get("pf", 0)),
+                        reverse=True)
+        for rank, (tid, rec) in enumerate(ranked, 1):
+            standings[tid] = {"rank": rank, **rec}
+        db.meta_set("standings", standings)
+    return len(rows), len(standings)
+
+
 # --- roster blueprint ------------------------------------------------------------------
 
 ARCHETYPES = [

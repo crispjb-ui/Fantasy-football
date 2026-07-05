@@ -31,7 +31,23 @@ can dry-run a full draft immediately. Before your real draft, open
 | **Lineup** | Weekly **start/sit optimizer**: fetch matchup projections for any week, get the optimal legal lineup with bye/injury warnings, free agents who out-project your starters this week, and D/ST + K streaming picks. Falls back to season-pace estimates when weekly data isn't fetched. |
 | **Waivers** | Weekly upgrade targets vs. your weakest starters, Sleeper trending heat, **FAAB bid ranges** sized to your $200 budget and **shaded to what rivals can actually pay** (via ESPN sync), playoff-schedule badges, transaction ledger. |
 | **Trades** | In-season **trade analyzer** — build any trade and get a verdict from starter-lineup math, asset value, keeper-forward surplus and playoff schedules — plus **suggested win-win trades** scanned from every rival roster. |
-| **Data & Setup** | One-click refresh (Sleeper projections, trending, FantasyPros AAV, NFL schedule/byes), **ESPN league sync** (live rosters + league-wide FAAB via espn_s2/SWID cookies), **Google Sheet live draft sync**, CSV imports, last-year draft/standings import, JSON backup export, team names, model settings. |
+| **Data & Setup** | One-click refresh (Sleeper projections, trending, FantasyPros AAV, NFL schedule/byes), **ESPN league sync** (live rosters + league-wide FAAB via espn_s2/SWID cookies), **Google Sheet live draft sync**, **consensus CSV imports** (each source label is one voice in the projection average), last-year draft/standings import, **season archive** (one click feeds next year's keeper/temperament analysis), auto-refresh toggle, JSON backup export, team names, model settings. |
+
+Plus, everywhere:
+
+- **🔔 Briefing** — background auto-refresh (~every 20h) diffs the world and
+  the bell in the header collects what changed: injuries on your roster,
+  big projection swings, hot free agents. Open the app, read the diff.
+- **Mock draft mode** (Draft Room) — rehearse against 9 simulated managers
+  who bid with *your league's* measured temperament. AI nominations, real
+  bidding dynamics (price = runner-up + $1), every live panel works.
+- **Win probability & playoff odds** (Lineup) — your weekly matchup win %
+  from both optimal lineups with variance-tilt pivots (ceiling players as
+  underdog, floor as favorite), and Monte Carlo playoff odds for the whole
+  league; trades show your odds delta.
+- **Vegas lines & usage trends** — implied team totals on every lineup row;
+  targets+carries trend arrows on waiver targets (spot breakouts before the
+  trending crowds), handcuff links, IR-slot stash advice. |
 
 ## Draft night, step by step
 
