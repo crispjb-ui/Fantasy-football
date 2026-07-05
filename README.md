@@ -79,7 +79,7 @@ Everything is stored in `data/league.db` (SQLite). Delete it to start over.
 ## Tests
 
 ```bash
-python3 scripts/selftest.py   # 55 end-to-end checks against a scratch DB
+python3 scripts/selftest.py   # 146 end-to-end checks against a scratch DB
 ```
 
 ## Notes on the math
