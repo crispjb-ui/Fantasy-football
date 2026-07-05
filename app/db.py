@@ -1,0 +1,297 @@
+"""SQLite persistence layer. Standard library only.
+
+Tables
+------
+meta          key/value store (JSON values) for config overrides & app state
+players       the player pool with projections and market values
+teams         the 10 league teams and their auction budgets
+picks         auction results (keepers are picks with is_keeper=1)
+transactions  season FAAB/waiver ledger
+"""
+
+import json
+import os
+import sqlite3
+import threading
+import time
+
+from . import config
+
+DB_PATH = os.environ.get(
+    "FFDRAFT_DB",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "league.db"),
+)
+
+_local = threading.local()
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS players (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    position TEXT NOT NULL,
+    team TEXT,
+    bye INTEGER,
+    status TEXT,
+    injury TEXT,
+    adp REAL,
+    market_aav REAL,
+    stats TEXT,
+    points REAL DEFAULT 0,
+    source TEXT,
+    updated_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_players_pos ON players(position);
+CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    is_me INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS picks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id TEXT NOT NULL,
+    team_id INTEGER NOT NULL,
+    price INTEGER NOT NULL,
+    is_keeper INTEGER DEFAULT 0,
+    ts REAL
+);
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week INTEGER,
+    add_id TEXT,
+    drop_id TEXT,
+    faab INTEGER DEFAULT 0,
+    note TEXT,
+    ts REAL
+);
+CREATE TABLE IF NOT EXISTS history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    season INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    player_name TEXT NOT NULL,
+    player_id TEXT,
+    position TEXT,
+    price INTEGER NOT NULL
+);
+"""
+
+
+def connect() -> sqlite3.Connection:
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.executescript(SCHEMA)
+        _ensure_teams(conn)
+        _local.conn = conn
+    return conn
+
+
+def _ensure_teams(conn):
+    n = conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
+    if n == 0:
+        rows = [(i, f"Team {i}", 1 if i == 1 else 0) for i in range(1, config.LEAGUE["num_teams"] + 1)]
+        conn.executemany("INSERT INTO teams (id, name, is_me) VALUES (?,?,?)", rows)
+        conn.commit()
+
+
+# --- meta / config ---------------------------------------------------------
+
+def meta_get(key, default=None):
+    row = connect().execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return json.loads(row["value"]) if row else default
+
+
+def meta_set(key, value):
+    conn = connect()
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, json.dumps(value)),
+    )
+    conn.commit()
+
+
+def get_config() -> dict:
+    cfg = dict(config.LEAGUE)
+    cfg.update(meta_get("config_overrides", {}))
+    return cfg
+
+
+# --- players ---------------------------------------------------------------
+
+def upsert_players(rows, source):
+    """rows: iterable of dicts with keys matching the players table."""
+    conn = connect()
+    now = time.time()
+    for r in rows:
+        conn.execute(
+            """INSERT INTO players (id, name, position, team, bye, status, injury,
+                                    adp, market_aav, stats, points, source, updated_at)
+               VALUES (:id,:name,:position,:team,:bye,:status,:injury,
+                       :adp,:market_aav,:stats,:points,:source,:updated_at)
+               ON CONFLICT(id) DO UPDATE SET
+                 name=excluded.name, position=excluded.position, team=excluded.team,
+                 bye=COALESCE(excluded.bye, players.bye),
+                 status=COALESCE(excluded.status, players.status),
+                 injury=excluded.injury,
+                 adp=COALESCE(excluded.adp, players.adp),
+                 market_aav=COALESCE(excluded.market_aav, players.market_aav),
+                 stats=COALESCE(excluded.stats, players.stats),
+                 points=CASE WHEN excluded.points > 0 THEN excluded.points ELSE players.points END,
+                 source=excluded.source, updated_at=excluded.updated_at""",
+            {
+                "id": r["id"], "name": r["name"], "position": r["position"],
+                "team": r.get("team"), "bye": r.get("bye"), "status": r.get("status"),
+                "injury": r.get("injury"), "adp": r.get("adp"),
+                "market_aav": r.get("market_aav"),
+                "stats": json.dumps(r["stats"]) if r.get("stats") is not None else None,
+                "points": r.get("points", 0), "source": source, "updated_at": now,
+            },
+        )
+    conn.commit()
+
+
+def all_players():
+    rows = connect().execute(
+        "SELECT * FROM players WHERE points > 0 OR market_aav > 0 ORDER BY points DESC"
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["stats"] = json.loads(d["stats"]) if d["stats"] else {}
+        out.append(d)
+    return out
+
+
+def get_player(pid):
+    r = connect().execute("SELECT * FROM players WHERE id=?", (pid,)).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    d["stats"] = json.loads(d["stats"]) if d["stats"] else {}
+    return d
+
+
+def set_market_aav(pid, aav):
+    conn = connect()
+    conn.execute("UPDATE players SET market_aav=? WHERE id=?", (aav, pid))
+    conn.commit()
+
+
+def clear_players():
+    conn = connect()
+    conn.execute("DELETE FROM players")
+    conn.commit()
+
+
+# --- teams -------------------------------------------------------------------
+
+def teams():
+    return [dict(r) for r in connect().execute("SELECT * FROM teams ORDER BY id").fetchall()]
+
+
+def update_team(team_id, name=None, is_me=None):
+    conn = connect()
+    if name is not None:
+        conn.execute("UPDATE teams SET name=? WHERE id=?", (name, team_id))
+    if is_me is not None and is_me:
+        conn.execute("UPDATE teams SET is_me=0")
+        conn.execute("UPDATE teams SET is_me=1 WHERE id=?", (team_id,))
+    conn.commit()
+
+
+def my_team_id():
+    r = connect().execute("SELECT id FROM teams WHERE is_me=1").fetchone()
+    return r["id"] if r else 1
+
+
+# --- picks (draft + keepers) ---------------------------------------------
+
+def add_pick(player_id, team_id, price, is_keeper=False):
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO picks (player_id, team_id, price, is_keeper, ts) VALUES (?,?,?,?,?)",
+        (player_id, team_id, int(price), 1 if is_keeper else 0, time.time()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def undo_last_pick():
+    conn = connect()
+    r = conn.execute("SELECT id, player_id FROM picks WHERE is_keeper=0 ORDER BY id DESC LIMIT 1").fetchone()
+    if not r:
+        return None
+    conn.execute("DELETE FROM picks WHERE id=?", (r["id"],))
+    conn.commit()
+    return r["player_id"]
+
+
+def remove_pick(pick_id):
+    conn = connect()
+    conn.execute("DELETE FROM picks WHERE id=?", (pick_id,))
+    conn.commit()
+
+
+def picks():
+    return [dict(r) for r in connect().execute("SELECT * FROM picks ORDER BY id").fetchall()]
+
+
+def clear_picks(include_keepers=False):
+    conn = connect()
+    if include_keepers:
+        conn.execute("DELETE FROM picks")
+    else:
+        conn.execute("DELETE FROM picks WHERE is_keeper=0")
+    conn.commit()
+
+
+# --- transactions (waivers) --------------------------------------------------
+
+def add_transaction(week, add_id, drop_id, faab, note=""):
+    conn = connect()
+    cur = conn.execute(
+        "INSERT INTO transactions (week, add_id, drop_id, faab, note, ts) VALUES (?,?,?,?,?,?)",
+        (week, add_id, drop_id, int(faab or 0), note, time.time()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def remove_transaction(tx_id):
+    conn = connect()
+    conn.execute("DELETE FROM transactions WHERE id=?", (tx_id,))
+    conn.commit()
+
+
+def transactions():
+    return [dict(r) for r in connect().execute("SELECT * FROM transactions ORDER BY id").fetchall()]
+
+
+# --- last-year history (keeper/trade/temperament analysis) ---------------------
+
+def replace_history(season, rows):
+    """rows: [{team_id, player_name, player_id, position, price}]"""
+    conn = connect()
+    conn.execute("DELETE FROM history WHERE season=?", (season,))
+    conn.executemany(
+        "INSERT INTO history (season, team_id, player_name, player_id, position, price) "
+        "VALUES (?,?,?,?,?,?)",
+        [(season, r["team_id"], r["player_name"], r.get("player_id"),
+          r.get("position"), int(r["price"])) for r in rows],
+    )
+    conn.commit()
+
+
+def history(season=None):
+    if season:
+        rows = connect().execute("SELECT * FROM history WHERE season=? ORDER BY price DESC", (season,)).fetchall()
+    else:
+        rows = connect().execute("SELECT * FROM history ORDER BY season DESC, price DESC").fetchall()
+    return [dict(r) for r in rows]
