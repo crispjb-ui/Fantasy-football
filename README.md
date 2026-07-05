@@ -24,7 +24,7 @@ can dry-run a full draft immediately. Before your real draft, open
 
 | Tab | What it does |
 | --- | --- |
-| **Draft Room** | Instant search (`/` to focus), a bid card per nomination (my max bid, target range, what the room will pay, fair value, hard cap), live **inflation-adjusted** values recomputed after every sale, all-10 budgets/max-bids, budget plan, nomination strategy, undo. |
+| **Draft Room** | Instant search (`/` to focus), a bid card per nomination with a one-line verdict (**TARGET / SIT OUT / FAIR PRICE ONLY**), your personal bid range, what the room will pay, alternatives left at the position, live **inflation-adjusted** values after every sale, all-10 budgets/max-bids, a **🎯 buy list** (who to target right now and why), a **live game plan** (posture + spend and named targets per open slot, re-optimized after every sale), a **🌱 keeper stash board** (young $1–$3 late-draft buys with next-year keeper math), nomination strategy, undo. |
 | **Strategy** | League temperament (how hard your room overpays elites — auto-calibrated from last year's prices), three roster **blueprints** scored against your live budget & the remaining pool, **keeper advisor** (optimal 2 keepers for every team under the +$15/1-per-position rules), **pre-season trade finder** (players other teams are forced to forfeit). |
 | **Players** | Full sortable value board: projections, VORP, model/market/blended value, tier, inflation-adjusted price, market edge. |
 | **Keepers** | Lock every team's keepers pre-draft; budgets & inflation update instantly. |

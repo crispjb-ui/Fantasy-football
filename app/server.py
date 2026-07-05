@@ -164,6 +164,14 @@ def api_player(q, body):
     mine = db.my_team_id()
     live = next((p for p in state["remaining"] if p["id"] == pid), None)
     advice = recommendations.bid_advice(live, state, mine, cfg) if live else None
+    if advice:
+        advice["alternatives"] = [_slim(a) for a in advice["alternatives"]]
+        stash = next((s for s in recommendations.keeper_stash(state, mine, cfg, limit=25)
+                      if s["player"]["id"] == pid), None)
+        if stash:
+            advice["stash"] = {"bid": stash["bid"], "keep_cost": stash["keep_cost"], "why": stash["why"]}
+            advice["reasons"].append(
+                f"KEEPER STASH: grab at ~${stash['bid']} — keepable next year at ${stash['keep_cost']}")
     pick = next((pk for pk in db.picks() if pk["player_id"] == pid), None)
     return {
         "player": player,
@@ -197,6 +205,27 @@ def api_draft(q, body):
         "budget_plan": recommendations.budget_plan(state, mine, cfg),
         "nominations": _slim_noms(recommendations.nomination_suggestions(state, mine, cfg)),
         "best_available": [_slim(p, fit=True) for p in recommendations.best_available(state, mine, cfg)],
+        "targets": [
+            {"player": _slim(t["player"]), "why": t["why"]}
+            for t in recommendations.targets_now(state, mine, cfg)
+        ],
+        "game_plan": _slim_plan(recommendations.game_plan(state, mine, cfg)),
+        "stash": [
+            {"player": _slim(s["player"]), "bid": s["bid"],
+             "keep_cost": s["keep_cost"], "why": s["why"]}
+            for s in recommendations.keeper_stash(state, mine, cfg)
+        ],
+    }
+
+
+def _slim_plan(plan):
+    return {
+        "posture": plan["posture"],
+        "bench": plan["bench"],
+        "slots": [
+            {"slot": s["slot"], "alloc": s["alloc"], "targets": [_slim(t) for t in s["targets"]]}
+            for s in plan["slots"]
+        ],
     }
 
 

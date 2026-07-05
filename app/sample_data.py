@@ -236,6 +236,29 @@ DSTS = [
 ]
 
 
+# Years of NFL experience entering 2026 (0 = incoming rookie) for the young
+# players in the sample pool — powers the keeper-stash board in demo mode.
+# Live Sleeper refreshes carry real age/years_exp for everyone.
+YEARS_EXP = {
+    "Ashton Jeanty": 1, "Omarion Hampton": 1, "TreVeyon Henderson": 1,
+    "Quinshon Judkins": 1, "RJ Harvey": 1, "Kaleb Johnson": 1,
+    "Cam Skattebo": 1, "Bhayshul Tuten": 1, "Dylan Sampson": 1,
+    "Devin Neal": 1, "Ollie Gordon": 1, "Trey Benson": 2, "Ray Davis": 2,
+    "Braelon Allen": 2, "Tyrone Tracy": 2, "Bucky Irving": 2,
+    "Jaydon Blue": 1, "Kendre Miller": 3,
+    "Brian Thomas Jr.": 2, "Malik Nabers": 2, "Ladd McConkey": 2,
+    "Xavier Worthy": 2, "Travis Hunter": 1, "Tetairoa McMillan": 1,
+    "Matthew Golden": 1, "Emeka Egbuka": 1, "Luther Burden": 1,
+    "Jayden Higgins": 1, "Tre Harris": 1, "Ricky Pearsall": 2,
+    "Keon Coleman": 2, "Rome Odunze": 2, "Marvin Harrison Jr.": 2,
+    "Jayden Reed": 3, "Jaxon Smith-Njigba": 3, "Rashee Rice": 3,
+    "Brock Bowers": 2, "Tyler Warren": 1, "Colston Loveland": 1,
+    "Brenton Strange": 3, "Ja'Tavion Sanders": 2, "Tucker Kraft": 3,
+    "Jayden Daniels": 2, "Caleb Williams": 2, "Drake Maye": 2,
+    "Bo Nix": 2, "Michael Penix Jr.": 2, "J.J. McCarthy": 2, "Bryce Young": 3,
+}
+
+
 def _rows():
     for n, t, py, ptd, pi, ry, rtd in QBS:
         yield n, t, "QB", {"pass_yd": py, "pass_td": ptd, "pass_int": pi,
@@ -267,6 +290,7 @@ def load():
             "team": team,
             "stats": stats,
             "points": scoring.score_player(pos, stats),
+            "years_exp": YEARS_EXP.get(name),
         })
     db.upsert_players(rows, source="sample")
     db.meta_set("last_refresh", {"source": "sample", "players": len(rows)})

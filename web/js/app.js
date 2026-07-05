@@ -128,6 +128,7 @@ async function renderDraft(gen) {
       <div class="panel" id="cardPanel"><h2>Nominated player</h2>
         <div class="note">Search a player to see values &amp; bid advice. Log every sale (any team) to keep inflation live.</div>
       </div>
+      <div class="panel"><h2>🎯 Buy list — target these now</h2><div id="buyList"></div></div>
       <div class="panel"><h2>Best available (inflation-adjusted)</h2>
         <div class="table-wrap" id="bestAvail"></div>
       </div>
@@ -137,7 +138,8 @@ async function renderDraft(gen) {
     </div>
     <div>
       <div class="panel"><h2>League budgets</h2><div id="teamsBoard"></div></div>
-      <div class="panel"><h2>My budget plan</h2><div id="budgetPlan"></div></div>
+      <div class="panel"><h2>Live game plan</h2><div id="gamePlan"></div></div>
+      <div class="panel"><h2>🌱 Keeper stash board <span class="hint dim">late-draft $1–$3 buys</span></h2><div id="stashPanel"></div></div>
       <div class="panel"><h2>Nomination strategy</h2><div id="nomPanel"></div></div>
     </div>
   </div>`;
@@ -165,18 +167,50 @@ function paintDraftPanels() {
       </div>
       <div class="spent-bar"><div style="width:${(t.spent / 5) | 0}%"></div></div>`).join("");
 
-  // budget plan
-  const bp = d.budget_plan;
-  const grouped = {};
-  (bp.slots || []).forEach(s => {
-    grouped[s.slot] = grouped[s.slot] || [];
-    grouped[s.slot].push(s.suggested);
-  });
-  $("#budgetPlan").innerHTML = bp.slots && bp.slots.length
-    ? `<table>` + Object.entries(grouped).map(([slot, vals]) =>
-        `<tr><td>${esc(slot)}</td><td class="r money">${vals.map(v => money(v)).join(" · ")}</td></tr>`).join("") +
-      `</table><div class="note" style="margin-top:6px">Suggested spend per open slot (sums to ${money(me.budget_left)}).</div>`
-    : `<div class="note">${esc(bp.note || "Roster complete.")}</div>`;
+  // live game plan
+  const gp = d.game_plan;
+  $("#gamePlan").innerHTML =
+    `<div class="note posture" style="margin-bottom:10px;color:var(--text)">${esc(gp.posture)}</div>` +
+    (gp.slots.length
+      ? `<table>` + gp.slots.map(s => `
+          <tr>
+            <td><b>${esc(s.slot)}</b></td>
+            <td class="r money" style="white-space:nowrap">${money(s.alloc)}</td>
+            <td>${s.targets.length
+              ? s.targets.map(t =>
+                  `<span class="tag clickable-tag" data-pid="${esc(t.id)}" title="target $${t.target_low}–$${t.target_high}">${esc(t.name)}</span>`).join(" ")
+              : '<span class="dim">stream/punt</span>'}</td>
+          </tr>`).join("") +
+        (gp.bench.count ? `<tr><td><b>BN</b></td><td class="r money">${money(gp.bench.total)}</td>
+          <td><span class="dim">${gp.bench.count} spots — late $1-$3 upside swings</span></td></tr>` : "") +
+        `</table><div class="note" style="margin-top:6px">Spend per open slot + who to get there. Recalculates after every sale.</div>`
+      : `<div class="note">Roster complete.</div>`);
+  $$("#gamePlan [data-pid]").forEach(el => (el.onclick = () => selectPlayer(el.dataset.pid)));
+
+  // buy list
+  $("#buyList").innerHTML = d.targets.length
+    ? d.targets.map(t => `
+      <div class="result-row" data-pid="${esc(t.player.id)}">
+        <span class="pos pos-${t.player.position}">${t.player.position}</span>
+        <span class="nm">${esc(t.player.name)} <span class="meta">${esc(t.player.team || "")} · T${t.player.tier}</span><br>
+          <span class="meta">${esc(t.why)}</span></span>
+        <span class="val" style="white-space:nowrap">$${t.player.target_low}–$${t.player.target_high}</span>
+      </div>`).join("")
+    : `<div class="note">${me.slots_left > 0 ? "Nothing affordable fits your open starter slots — pivot to value/bench plays from Best available." : "Roster complete."}</div>`;
+  $$("#buyList .result-row").forEach(r => (r.onclick = () => selectPlayer(r.dataset.pid)));
+
+  // keeper stash board
+  $("#stashPanel").innerHTML = (d.stash && d.stash.length)
+    ? `<div class="note" style="margin-bottom:6px">When the room checks out, build 2027: young upside at $1–$3 becomes a cheap keeper (+$${(S.app && S.app.config.keeper_surcharge) || 15} next year).</div>` +
+      d.stash.map(s => `
+      <div class="result-row" data-pid="${esc(s.player.id)}">
+        <span class="pos pos-${s.player.position}">${s.player.position}</span>
+        <span class="nm">${esc(s.player.name)} <span class="meta">${esc(s.player.team || "")}</span><br>
+          <span class="meta">${esc(s.why)}</span></span>
+        <span class="val">$${s.bid}</span>
+      </div>`).join("")
+    : `<div class="note">No stash candidates left on the board.</div>`;
+  $$("#stashPanel .result-row").forEach(r => (r.onclick = () => selectPlayer(r.dataset.pid)));
 
   // nominations
   const noms = d.nominations;
@@ -286,7 +320,9 @@ function paintCard() {
     html += `<div class="note">Sold to <b>${esc(t ? t.name : "?")}</b> for <b class="money">${money(c.pick.price)}</b>${c.pick.is_keeper ? " (keeper)" : ""}.</div>`;
   } else if (a) {
     const edge = p.edge || 0;
-    html += `<div class="big-vals">
+    const actCls = a.verdict === "pass" ? "pass" : a.verdict === "fair" ? "fair" : "target";
+    html += `<div class="headline ${actCls}">${esc(a.headline)}</div>
+    <div class="big-vals">
       <div class="bigval hero"><div class="n">${money(a.suggested_max_bid)}</div><div class="l">my max bid</div></div>
       <div class="bigval"><div class="n">$${p.target_low}–$${p.target_high}</div><div class="l">target range</div></div>
       <div class="bigval"><div class="n">${money(p.expected_price)}</div><div class="l">room will pay</div></div>
@@ -301,7 +337,12 @@ function paintCard() {
           ? `<b style="color:var(--red)">$${edge} edge</b> — expect a bidding war ~${money(p.expected_price)}; walk away above $${p.target_high}`
           : `priced about fairly by this room (edge ${edge >= 0 ? "+" : ""}$${edge})`}</li>
       ${a.reasons.map(r => `<li>${esc(r)}</li>`).join("")}
-    </ul>`;
+    </ul>
+    ${a.alternatives && a.alternatives.length ? `
+    <div class="note">If you lose him, still out there:
+      ${a.alternatives.map(alt =>
+        `<span class="tag clickable-tag" data-pid="${esc(alt.id)}">${esc(alt.name)} ${money(alt.adj_value)} T${alt.tier}</span>`).join(" ")}
+    </div>` : ""}`;
   }
 
   if (!c.drafted) {
@@ -317,6 +358,7 @@ function paintCard() {
     </div>`;
   }
   $("#cardPanel").innerHTML = html;
+  $$("#cardPanel [data-pid]").forEach(el => (el.onclick = () => selectPlayer(el.dataset.pid)));
   const priceEl = $("#salePrice");
   if (priceEl) {
     priceEl.focus(); priceEl.select();

@@ -89,6 +89,8 @@ def fetch_sleeper(season):
             "market_aav": None,
             "stats": stats,
             "points": pts,
+            "age": info.get("age"),
+            "years_exp": info.get("years_exp"),
         })
     if not rows:
         raise RuntimeError(f"Sleeper returned no usable {season} projections")

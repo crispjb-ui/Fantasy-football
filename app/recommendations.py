@@ -76,13 +76,34 @@ def bid_advice(player, state, my_id, cfg):
     elif state["inflation"] < 0.95:
         reasons.append(f"market is deflated ({state['inflation']:.2f}x) — bargains available")
 
+    suggested = max(suggested_max, 1 if me["slots_left"] > 0 else 0)
+    alternatives = sorted(
+        (q for q in state["remaining"] if q["position"] == pos and q["id"] != player["id"]),
+        key=lambda q: q["adj_value"], reverse=True,
+    )[:3]
+
+    if me["slots_left"] <= 0:
+        headline = "Your roster is full — you're just watching now."
+    elif verdict == "pass":
+        if mult < 0.9:
+            headline = f"SIT OUT — he's only a bench piece for you. Let someone else pay ~${player.get('expected_price', adj):.0f}."
+        else:
+            headline = f"SIT OUT unless he slips to ${suggested} — the room will likely beat your number."
+    elif verdict in ("target", "value"):
+        opener = max(1, int(round(suggested * 0.7)))
+        headline = f"TARGET — open near ${opener}, bid to ${suggested}, hard stop there."
+    else:
+        headline = f"FAIR PRICE ONLY — worth ${suggested} to you, not a dollar more."
+
     return {
         "value": player.get("value"),
         "adj_value": adj,
         "need_multiplier": round(mult, 2),
-        "suggested_max_bid": max(suggested_max, 1 if me["slots_left"] > 0 else 0),
+        "suggested_max_bid": suggested,
         "hard_max_bid": hard_max,
         "verdict": verdict,
+        "headline": headline,
+        "alternatives": alternatives,
         "reasons": reasons,
     }
 
@@ -125,6 +146,159 @@ def budget_plan(state, my_id, cfg):
     if plan:
         plan[0]["suggested"] += drift
     return {"slots": plan, "budget_left": budget, "note": ""}
+
+
+def targets_now(state, my_id, cfg, limit=8):
+    """The live buy list: players I should be trying to own RIGHT NOW,
+    ranked by roster fit, market edge, tier urgency and affordability."""
+    me = _my_state(state, my_id)
+    if me["slots_left"] <= 0:
+        return []
+    out = []
+    for p in state["remaining"]:
+        if p["value"] < 1:
+            continue
+        mult = _need_multiplier(p, me, state, cfg)
+        if mult < 0.9:            # starters/FLEX fits only — bench comes late
+            continue
+        exp = p.get("expected_price", p["value"])
+        if exp > me["max_bid"]:
+            continue
+        edge = p.get("edge", 0) or 0
+        tier_left = len([
+            q for q in state["remaining"]
+            if q["position"] == p["position"] and q.get("tier") == p.get("tier")
+        ])
+        urgency = 3.0 if tier_left <= 2 else (1.5 if tier_left <= 4 else 0.0)
+        score = (p["adj_value"] * (mult - 0.85) * 2
+                 + max(edge, 0) * 2 + urgency * 4 + p["points"] / 25)
+        reasons = []
+        if edge > 2:
+            reasons.append(f"room should let him go ~${exp:.0f} — ${edge:.0f} under fair value")
+        if tier_left <= 2:
+            reasons.append(f"only {tier_left} left in {p['position']} tier {p.get('tier')} — act soon")
+        elif mult > 1.0:
+            reasons.append("fills a scarce starter need")
+        if not reasons:
+            reasons.append("clean fit for an open starter slot")
+        out.append({"player": p, "score": round(score, 1), "why": "; ".join(reasons)})
+    out.sort(key=lambda x: -x["score"])
+    return out[:limit]
+
+
+def keeper_stash(state, my_id, cfg, limit=12):
+    """Late-draft keeper-league gold: young, cheap, high-upside players to
+    grab for $1-$3 while the room is asleep. Next year's keeper cost is
+    (price + surcharge), so a $2 stash keeps at $17 — huge surplus if he pops.
+
+    Ranked by youth (rookies/2nd-year highest), proximity to startable
+    points, and market softness. K/DST excluded — no keeper upside there.
+    """
+    surcharge = cfg["keeper_surcharge"]
+    out = []
+    for p in state["remaining"]:
+        if p["position"] in ("K", "DST"):
+            continue
+        exp = p.get("expected_price", p["value"])
+        if exp > 7:                       # not a sleeper if the room prices him
+            continue
+        yexp, age = p.get("years_exp"), p.get("age")
+        if yexp is not None:
+            youth = {0: 1.0, 1: 1.0, 2: 0.75}.get(yexp, 0.0)
+        elif age is not None:
+            youth = 1.0 if age <= 23 else (0.6 if age <= 25 else 0.0)
+        else:
+            youth = 0.0                   # unknown age/exp: not a stash bet
+        if youth < 0.6:                   # this board is strictly a youth play
+            continue
+        # Upside proxy: how close he already projects to startable (capped so
+        # a high-floor player can't out-rank genuine youth).
+        repl = p.get("replacement_pts", 0) or 0
+        upside = min(60.0, max(0.0, p["points"] - 0.6 * repl))
+        pos_weight = {"QB": 0.6, "TE": 0.85}.get(p["position"], 1.0)  # 1-QB league
+        score = (youth * 25 + upside * 0.35 + max(0.0, p.get("edge", 0) or 0)) * pos_weight
+        if score < 12:
+            continue
+        bid = max(1, min(4, int(round(p["value"] * 0.6)) or 1))
+        label = ("rookie" if yexp == 0 else
+                 f"{yexp + 1}{'nd' if yexp == 1 else 'rd' if yexp == 2 else 'th'}-year" if yexp is not None else
+                 f"age {age}")
+        out.append({
+            "player": p,
+            "score": round(score, 1),
+            "bid": bid,
+            "keep_cost": bid + surcharge,
+            "why": (f"{label} · projects {p['points']:.0f} pts vs {repl:.0f} replacement — "
+                    f"buy ~${bid}, keepable in {cfg['season'] + 1} at ${bid + surcharge}"),
+        })
+    out.sort(key=lambda x: -x["score"])
+    return out[:limit]
+
+
+def game_plan(state, my_id, cfg):
+    """The dynamic build: posture advice + per-open-slot spend with named
+    targets, re-derived from the live board after every sale."""
+    me = _my_state(state, my_id)
+    plan = budget_plan(state, my_id, cfg)
+    by_slot = {}
+    for e in plan.get("slots", []):
+        by_slot.setdefault(e["slot"], []).append(e["suggested"])
+
+    slot_rows, taken = [], set()
+    for slot, allocs in by_slot.items():
+        if slot == "BN":
+            continue
+        positions = cfg["flex_positions"] if slot == "FLEX" else [slot]
+        for alloc in sorted(allocs, reverse=True):
+            cands = sorted(
+                (p for p in state["remaining"]
+                 if p["position"] in positions and p["id"] not in taken
+                 and p.get("expected_price", p["value"]) <= max(alloc * 1.25, alloc + 3)),
+                key=lambda p: p["points"], reverse=True,
+            )
+            targets = cands[:3]
+            if targets:
+                taken.add(targets[0]["id"])   # don't plan the same guy for two slots
+            slot_rows.append({"slot": slot, "alloc": alloc, "targets": targets})
+
+    bench_allocs = by_slot.get("BN", [])
+    return {
+        "posture": _posture(state, me, cfg),
+        "slots": slot_rows,
+        "bench": {"count": len(bench_allocs), "total": sum(bench_allocs)},
+    }
+
+
+def _posture(state, me, cfg):
+    """One or two sentences on how to play the room right now."""
+    if me["slots_left"] <= 0:
+        return "Roster complete — you're done."
+    others = [t for t in state["teams"] if t["id"] != me["id"]]
+    max_other = max((t["max_bid"] for t in others), default=0)
+    budgets = sorted((t["budget_left"] for t in state["teams"]), reverse=True)
+    my_rank = budgets.index(me["budget_left"]) + 1
+    elites = sorted((p for p in state["remaining"] if p["value"] >= 35),
+                    key=lambda p: p["value"], reverse=True)
+    open_starters = sum(me["open_starters"].values())
+
+    msgs = []
+    if elites and open_starters:
+        cheapest_elite = min(p.get("expected_price", p["value"]) for p in elites[:3])
+        if me["max_bid"] < cheapest_elite:
+            msgs.append("The remaining difference-makers are out of your range — pivot to "
+                        "mid-tier value and depth, and let rivals drain each other.")
+        elif my_rank <= 3:
+            msgs.append(f"You hold the #{my_rank} budget with {len(elites)} difference-maker(s) "
+                        "still out — you can win a bidding war; pick one and push.")
+    if state["inflation"] < 0.93:
+        msgs.append("Prices are running cold — buy now, the whole board is discounted.")
+    elif state["inflation"] > 1.07:
+        msgs.append("Prices are running hot — stay patient; inflation always cracks late.")
+    if max_other < 12 and open_starters:
+        msgs.append("Rivals are nearly tapped — nominate your real targets and take them.")
+    if not msgs:
+        msgs.append("On plan. Stick to the slot budgets below and pounce on positive-edge players.")
+    return " ".join(msgs[:2])
 
 
 def nomination_suggestions(state, my_id, cfg, limit=6):

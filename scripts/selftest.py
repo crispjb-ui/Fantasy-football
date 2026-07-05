@@ -118,13 +118,42 @@ check("budget plan sums to budget", sum(x["suggested"] for x in r["budget_plan"]
 check("nominations present", len(r["nominations"]["suggestions"]) > 0)
 check("best available present", len(r["best_available"]) > 10)
 
+# live game plan + buy list
+gp = r["game_plan"]
+check("game plan posture", isinstance(gp["posture"], str) and len(gp["posture"]) > 10, str(gp["posture"]))
+check("game plan covers open starter slots", len(gp["slots"]) >= 8, f"slots={len(gp['slots'])}")
+check("game plan slots have named targets", sum(1 for s in gp["slots"] if s["targets"]) >= 6,
+      str([(s['slot'], len(s['targets'])) for s in gp['slots']]))
+check("buy list present", len(r["targets"]) >= 5, f"targets={len(r['targets'])}")
+check("buy list has reasons + ranges", all(
+    t["why"] and t["player"]["target_low"] <= t["player"]["target_high"] for t in r["targets"]))
+
+# keeper stash board
+stash = r["stash"]
+check("stash board present", len(stash) >= 5, f"n={len(stash)}")
+check("stash bids are late-draft money", all(1 <= s["bid"] <= 4 for s in stash), str([s["bid"] for s in stash]))
+check("stash keep-cost math (+$15)", all(s["keep_cost"] == s["bid"] + 15 for s in stash))
+check("stash excludes K/DST", all(s["player"]["position"] not in ("K", "DST") for s in stash))
+check("stash favors youth", any("rookie" in s["why"] or "2nd-year" in s["why"] for s in stash),
+      str([s["why"] for s in stash[:3]]))
+
 # bid advice on an available elite player
 r, s = call("GET", "/api/players?q=barkley")
 saquon = r["players"][0]["id"]
 r, s = call("GET", "/api/player?id=" + saquon)
 adv = r["advice"]
-check("bid advice present", adv and adv["suggested_max_bid"] > 20, str(adv))
+check("bid advice present", adv and adv["suggested_max_bid"] > 20, str(adv)[:200])
 check("advice notes open RB slot", any("RB" in x for x in adv["reasons"]), str(adv["reasons"]))
+check("advice headline actionable", adv["headline"].startswith(("TARGET", "SIT OUT", "FAIR")), adv["headline"])
+check("advice lists alternatives", len(adv["alternatives"]) == 3 and
+      all(a["position"] == "RB" for a in adv["alternatives"]), str(adv["alternatives"])[:150])
+
+# a bench-only player for me should read SIT OUT once my starters fill up
+# (deferred check happens naturally in real drafts; here verify pass verdict wiring)
+r2, s2 = call("GET", "/api/players?pos=K&available=1")
+k_id = r2["players"][0]["id"]
+r2, s2 = call("GET", "/api/player?id=" + k_id)
+check("kicker advice is lukewarm", r2["advice"]["suggested_max_bid"] <= 8, str(r2["advice"])[:150])
 
 # undo
 r, s = call("POST", "/api/undo")

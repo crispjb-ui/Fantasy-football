@@ -102,6 +102,13 @@ main { padding: 14px 16px; }
 .bigval.hero { border-color: var(--accent); }
 .bigval.hero .n { color: var(--accent); }
 .verdict { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.headline { font-size: 15px; font-weight: 700; padding: 9px 12px; border-radius: var(--radius);
+  margin-bottom: 12px; border: 1px solid var(--border); background: var(--bg3); }
+.headline.target { border-color: var(--green); color: var(--green); }
+.headline.fair { border-color: var(--amber); color: var(--amber); }
+.headline.pass { border-color: var(--red); color: var(--red); }
+.clickable-tag { cursor: pointer; }
+.clickable-tag:hover { border-color: var(--accent); color: var(--text); }
 .verdict.target { background: #16401f; color: var(--green); }
 .verdict.value { background: #16401f; color: var(--green); }
 .verdict.fair { background: #4d3f14; color: var(--amber); }

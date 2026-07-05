@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS players (
     market_aav REAL,
     stats TEXT,
     points REAL DEFAULT 0,
+    age INTEGER,
+    years_exp INTEGER,
     source TEXT,
     updated_at REAL
 );
@@ -87,6 +89,12 @@ def connect() -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
+        # Migrate databases created before the age/years_exp columns existed.
+        for col in ("age INTEGER", "years_exp INTEGER"):
+            try:
+                conn.execute(f"ALTER TABLE players ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
         _ensure_teams(conn)
         _local.conn = conn
     return conn
@@ -132,9 +140,11 @@ def upsert_players(rows, source):
     for r in rows:
         conn.execute(
             """INSERT INTO players (id, name, position, team, bye, status, injury,
-                                    adp, market_aav, stats, points, source, updated_at)
+                                    adp, market_aav, stats, points, age, years_exp,
+                                    source, updated_at)
                VALUES (:id,:name,:position,:team,:bye,:status,:injury,
-                       :adp,:market_aav,:stats,:points,:source,:updated_at)
+                       :adp,:market_aav,:stats,:points,:age,:years_exp,
+                       :source,:updated_at)
                ON CONFLICT(id) DO UPDATE SET
                  name=excluded.name, position=excluded.position, team=excluded.team,
                  bye=COALESCE(excluded.bye, players.bye),
@@ -144,6 +154,8 @@ def upsert_players(rows, source):
                  market_aav=COALESCE(excluded.market_aav, players.market_aav),
                  stats=COALESCE(excluded.stats, players.stats),
                  points=CASE WHEN excluded.points > 0 THEN excluded.points ELSE players.points END,
+                 age=COALESCE(excluded.age, players.age),
+                 years_exp=COALESCE(excluded.years_exp, players.years_exp),
                  source=excluded.source, updated_at=excluded.updated_at""",
             {
                 "id": r["id"], "name": r["name"], "position": r["position"],
@@ -151,7 +163,8 @@ def upsert_players(rows, source):
                 "injury": r.get("injury"), "adp": r.get("adp"),
                 "market_aav": r.get("market_aav"),
                 "stats": json.dumps(r["stats"]) if r.get("stats") is not None else None,
-                "points": r.get("points", 0), "source": source, "updated_at": now,
+                "points": r.get("points", 0), "age": r.get("age"),
+                "years_exp": r.get("years_exp"), "source": source, "updated_at": now,
             },
         )
     conn.commit()
