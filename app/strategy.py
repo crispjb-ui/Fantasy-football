@@ -300,13 +300,27 @@ def evaluate_trade(pool_by_id, my_ids, give_ids, get_ids, cfg):
     paid = _price_paid()
     surcharge = cfg["keeper_surcharge"]
     keeper_notes = []
+    keeper_delta = 0.0
+
+    def _surplus(p):
+        if p["id"] not in paid:
+            return 0.0
+        return p.get("value", 0) - (paid[p["id"]] + surcharge)
+
     for p in get:
-        if p["id"] in paid:
-            surplus = p.get("value", 0) - (paid[p["id"]] + surcharge)
-            if surplus > 8:
-                keeper_notes.append(
-                    f"{p['name']} keeps in {cfg['season'] + 1} at ${paid[p['id']] + surcharge} "
-                    f"(~${surplus:.0f} of keeper surplus rides along)")
+        surplus = _surplus(p)
+        if surplus > 8:
+            keeper_delta += surplus
+            keeper_notes.append(
+                f"{p['name']} keeps in {cfg['season'] + 1} at ${paid[p['id']] + surcharge} "
+                f"(~${surplus:.0f} of keeper surplus rides along)")
+    for p in give:
+        surplus = _surplus(p)
+        if surplus > 8:
+            keeper_delta -= surplus
+            keeper_notes.append(
+                f"⚠ You'd be handing over {p['name']}'s keeper rights — he keeps at "
+                f"${paid[p['id']] + surcharge} (~${surplus:.0f} of surplus leaves with him)")
     sos = db.meta_get("playoff_sos", {})
     sos_notes = []
     for p in get:
@@ -328,10 +342,16 @@ def evaluate_trade(pool_by_id, my_ids, give_ids, get_ids, cfg):
                    f"Lineup-neutral but you {'gain' if value_delta > 0 else 'give up'} ${abs(value_delta):.0f} of asset value.")
     else:
         verdict, summary = "decline", f"Your starters lose {abs(ppw):.1f} pts/week."
+    if abs(keeper_delta) >= 15:
+        summary += (f" Keeper math {'adds' if keeper_delta > 0 else 'costs'} "
+                    f"~${abs(keeper_delta):.0f} of next-year surplus on top.")
+        if verdict == "neutral":
+            verdict = "accept" if keeper_delta > 0 else "decline"
     return {
         "verdict": verdict, "summary": summary,
         "starter_pts_before": round(before, 1), "starter_pts_after": round(after, 1),
         "delta_per_week": round(ppw, 2), "value_delta": round(value_delta, 1),
+        "keeper_value_delta": round(keeper_delta, 1),
         "roster_spots_delta": roster_delta,
         "keeper_notes": keeper_notes, "sos_notes": sos_notes,
         "give": give, "get": get,
@@ -389,13 +409,45 @@ def suggest_trades(pool_by_id, cfg, limit=8):
                 their_gain = (their_after - their_before) / 17.0
                 suggestions.append({
                     "team_id": tid, "team": teams.get(tid, f"Team {tid}"),
-                    "get": target, "give": give,
+                    "get": target, "give": give, "give2": None,
                     "my_gain_ppw": round(my_gain, 2),
                     "their_gain_ppw": round(their_gain, 2),
                     "pitch": (f"{teams.get(tid)} starts {give['name']} over what they have"
                               if their_gain > 0 else
                               f"Sell {give['name']}'s name value; they lose little"),
                 })
+        # 2-for-1 consolidation: package two of my depth pieces for their
+        # stud — starter slots are the scarce resource, depth is the currency.
+        pieces = sorted(my_bench, key=lambda p: p.get("value", 0), reverse=True)[:5]
+        for target in sorted(their, key=lambda p: p.get("points", 0), reverse=True)[:5]:
+            v_t = target.get("value", 0)
+            if v_t < 20:
+                continue
+            for i in range(len(pieces)):
+                for j in range(i + 1, len(pieces)):
+                    g1, g2 = pieces[i], pieces[j]
+                    if target["id"] in (g1["id"], g2["id"]):
+                        continue
+                    v_g = g1.get("value", 0) + g2.get("value", 0)
+                    if not (0.85 * v_t <= v_g <= 1.7 * v_t):
+                        continue
+                    my_after = _starter_points(
+                        [p for p in mine if p["id"] not in (g1["id"], g2["id"])] + [target], cfg)
+                    my_gain = (my_after - before) / 17.0
+                    if my_gain < 0.5:
+                        continue
+                    their_after = _starter_points(
+                        [p for p in their if p["id"] != target["id"]] + [g1, g2], cfg)
+                    their_gain = (their_after - their_before) / 17.0
+                    suggestions.append({
+                        "team_id": tid, "team": teams.get(tid, f"Team {tid}"),
+                        "get": target, "give": g1, "give2": g2,
+                        "my_gain_ppw": round(my_gain, 2),
+                        "their_gain_ppw": round(their_gain, 2),
+                        "pitch": (f"2-for-1: they add two starters-worth of depth"
+                                  + (", and it upgrades their lineup too" if their_gain > 0 else
+                                     " — quantity for their quality")),
+                    })
     # Plausible first: trades that help them too, then by my gain.
     suggestions.sort(key=lambda s: (-(s["their_gain_ppw"] > 0), -s["my_gain_ppw"]))
     seen, deduped = set(), []

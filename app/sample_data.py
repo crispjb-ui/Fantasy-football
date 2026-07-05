@@ -301,5 +301,7 @@ def load():
             "years_exp": YEARS_EXP.get(name),
         })
     db.upsert_players(rows, source="sample")
+    db.set_proj_source("sample", {r["id"]: r["points"] for r in rows})
+    db.rebuild_consensus()
     db.meta_set("last_refresh", {"source": "sample", "players": len(rows)})
     return len(rows)

@@ -95,6 +95,11 @@ def bid_advice(player, state, my_id, cfg):
     heat = state.get("pos_heat", {}).get(pos)
     if heat and abs(heat - 1.0) >= 0.07:
         reasons.append(f"{pos}s are selling {abs(heat - 1) * 100:.0f}% {'over' if heat > 1 else 'under'} sticker tonight")
+    if player.get("bye"):
+        same_bye = [p for p in me["players"] if p.get("bye") == player["bye"]]
+        if len(same_bye) >= 2:
+            reasons.append(f"⚠ bye-stack: would put {len(same_bye) + 1} of your players on bye week {player['bye']} "
+                           f"(with {', '.join(x['name'] for x in same_bye[:3])})")
     if state["inflation"] > 1.05:
         reasons.append(f"market is inflated ({state['inflation']:.2f}x) — expect prices above sticker")
     elif state["inflation"] < 0.95:
@@ -286,8 +291,13 @@ def game_plan(state, my_id, cfg):
             slot_rows.append({"slot": slot, "alloc": alloc, "targets": targets})
 
     bench_allocs = by_slot.get("BN", [])
+    bye_counts = {}
+    for p in me["players"]:
+        if p.get("bye"):
+            bye_counts[p["bye"]] = bye_counts.get(p["bye"], 0) + 1
+    bye_alert = ", ".join(f"{n} players on bye {wk}" for wk, n in sorted(bye_counts.items()) if n >= 3)
     return {
-        "posture": _posture(state, me, cfg),
+        "posture": _posture(state, me, cfg) + (f" ⚠ Bye-stack risk: {bye_alert}." if bye_alert else ""),
         "slots": slot_rows,
         "bench": {"count": len(bench_allocs), "total": sum(bench_allocs)},
     }

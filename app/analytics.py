@@ -96,6 +96,91 @@ def _variance_pivots(my_l, win_prob, cfg):
     return pivots[:3]
 
 
+# --- season-end scorecard (model accountability) -----------------------------
+
+def take_preseason_snapshot(pool, cfg):
+    """Freeze projections/values/per-source points so the season-end
+    scorecard has something to grade. Idempotent per season."""
+    sources = {}
+    for r in db.connect().execute("SELECT source, player_id, points FROM proj_sources"):
+        sources.setdefault(r["player_id"], {})[r["source"]] = r["points"]
+    snap = {
+        p["id"]: {"points": p["points"], "value": p.get("value", 0),
+                  "name": p["name"], "position": p["position"],
+                  "sources": sources.get(p["id"], {})}
+        for p in pool if p.get("points", 0) > 0
+    }
+    db.meta_set(f"preseason_{cfg['season']}", snap)
+    return len(snap)
+
+
+def scorecard(cfg):
+    """Grade the model against actual results: source accuracy (with
+    suggested consensus weights), projection hit-rate, steals/busts, and
+    price efficiency from the draft."""
+    season = cfg["season"]
+    snap = db.meta_get(f"preseason_{season}")
+    act = db.actuals(season)
+    if not snap:
+        return {"ready": False, "why": "No preseason snapshot — take one before the season (or archive the season, which snapshots automatically)."}
+    if not act:
+        return {"ready": False, "why": "No actual results yet — fetch season actuals first."}
+
+    # Per-source accuracy on players that mattered (either side >= 60 pts).
+    src_err = {}
+    for pid, s in snap.items():
+        a = act.get(pid)
+        if a is None or max(a, s["points"]) < 60:
+            continue
+        for src, proj in s["sources"].items():
+            src_err.setdefault(src, []).append(abs(proj - a))
+    sources = []
+    for src, errs in src_err.items():
+        sources.append({"source": src, "mae": round(sum(errs) / len(errs), 1), "n": len(errs)})
+    sources.sort(key=lambda x: x["mae"])
+    raw_w = {s["source"]: 1.0 / (s["mae"] ** 1.5) for s in sources if s["mae"] > 0}
+    mean_w = (sum(raw_w.values()) / len(raw_w)) if raw_w else 1.0
+    suggested_weights = {k: round(v / mean_w, 2) for k, v in raw_w.items()}
+
+    # Hit rate: preseason top-24 by projected points vs actual top-24 scorers
+    # (both raw points, so positions compare like-for-like).
+    pre_top = {pid for pid, _ in sorted(snap.items(), key=lambda kv: -kv[1]["points"])[:24]}
+    act_top = set(list(pid for pid, _ in sorted(act.items(), key=lambda kv: -kv[1]) if pid in snap)[:24])
+    hit_rate = round(len(pre_top & act_top) / 24 * 100)
+
+    # Steals & busts by projection error.
+    diffs = []
+    for pid, s in snap.items():
+        a = act.get(pid)
+        if a is None or max(a, s["points"]) < 80:
+            continue
+        diffs.append({"name": s["name"], "position": s["position"],
+                      "projected": s["points"], "actual": round(a, 1),
+                      "diff": round(a - s["points"], 1)})
+    diffs.sort(key=lambda d: -d["diff"])
+    steals, busts = diffs[:5], sorted(diffs[-5:], key=lambda d: d["diff"])
+
+    # Price efficiency from the archived draft.
+    buys = []
+    for h in db.history(season):
+        a = act.get(h["player_id"]) if h["player_id"] else None
+        if a is None or h["price"] < 5:
+            continue
+        buys.append({"name": h["player_name"], "team_id": h["team_id"],
+                     "price": h["price"], "actual": round(a, 1),
+                     "pts_per_dollar": round(a / h["price"], 1)})
+    buys.sort(key=lambda b: -b["pts_per_dollar"])
+    return {
+        "ready": True, "season": season,
+        "sources": sources, "suggested_weights": suggested_weights,
+        "current_weights": db.meta_get("source_weights", {}),
+        "top24_hit_rate": hit_rate,
+        "steals": steals, "busts": busts,
+        "best_buys": buys[:5], "worst_buys": buys[-5:][::-1] if buys else [],
+        "graded_players": len(diffs),
+    }
+
+
 # --- playoff odds ---------------------------------------------------------------
 
 def _team_strength(pool_by_id, cfg):

@@ -272,7 +272,9 @@ def _purge_sample_players():
     for r in rows:
         if r["id"] not in referenced:
             conn.execute("DELETE FROM players WHERE id=?", (r["id"],))
+    conn.execute("DELETE FROM proj_sources WHERE source='sample'")
     conn.commit()
+    db.rebuild_consensus()
 
 
 def api_import_csv(q, body):
@@ -408,6 +410,7 @@ def api_pick(q, body):
     if price > team["max_bid"]:
         return {"error": f"{team['name']} can only bid up to ${team['max_bid']}"}
     db.add_pick(pid, team_id, price, is_keeper=False)
+    _maybe_backup()
     return {"ok": True}
 
 
@@ -557,6 +560,8 @@ def api_sheet_sync(q, body):
             if not pk["is_keeper"] and pid not in matched:
                 db.remove_pick(pk["id"])
                 removed += 1
+    if added or updated:
+        _maybe_backup()
     return {"ok": True, "added": added, "updated": updated, "removed": removed,
             "rows": len(sales), "warnings": warnings[:10]}
 
@@ -614,10 +619,16 @@ def api_lineup(q, body):
                 "wsrc": p.get("wsrc"), "bye": p.get("bye"), "injury": p.get("injury"),
                 "implied": v["implied"] if v else None}
 
+    horizon = []
+    for wk in range(week, min(week + 4, 19)):
+        byes = [p["name"] for p in my_players if p.get("bye") == wk]
+        horizon.append({"week": wk, "byes": byes})
+
     return {
         "week": week,
         "has_weekly_data": bool(wk_proj),
         "has_vegas": bool(vegas),
+        "horizon": horizon,
         "roster_source": "espn" if _espn_rosters_active() else "draft",
         "lineup": [{"slot": r["slot"], "player": wslim(r["player"]) if r["player"] else None}
                    for r in result["lineup"]],
@@ -658,7 +669,8 @@ def api_trade_suggest(q, body):
     return {
         "note": res["note"],
         "suggestions": [
-            {**s, "get": _slim(s["get"]), "give": _slim(s["give"])}
+            {**s, "get": _slim(s["get"]), "give": _slim(s["give"]),
+             "give2": _slim(s["give2"]) if s.get("give2") else None}
             for s in res["suggestions"]
         ],
     }
@@ -711,13 +723,102 @@ def api_mock_resolve(q, body):
     if player is None:
         return {"error": "player not on the board"}
     result = mock.resolve_auction(state, db.my_team_id(), player, int(body.get("my_max") or 0), cfg)
+    if not result.get("error"):
+        db.meta_set("mock_done", True)
     return result if result.get("error") else {"ok": True, **result}
 
 
 def api_season_archive(q, body):
+    pool, cfg = _valued_pool()
+    if not db.meta_get(f"preseason_{cfg['season']}"):
+        analytics.take_preseason_snapshot(pool, cfg)
     n, standings = strategy.archive_season()
     return {"ok": True, "archived_picks": n, "standings_teams": standings,
             "note": "This season now feeds next year's keeper advisor, trade finder and temperament calibration."}
+
+
+def api_snapshot(q, body):
+    pool, cfg = _valued_pool()
+    n = analytics.take_preseason_snapshot(pool, cfg)
+    return {"ok": True, "players": n, "season": cfg["season"]}
+
+
+def api_actuals_refresh(q, body):
+    cfg = db.get_config()
+    season = int(body.get("season") or cfg["season"])
+    n = data_sources.fetch_season_actuals(season)
+    return {"ok": True, "season": season, "players": n}
+
+
+def api_scorecard(q, body):
+    return analytics.scorecard(db.get_config())
+
+
+def api_scorecard_weights(q, body):
+    weights = body.get("weights") or {}
+    db.meta_set("source_weights", {k: float(v) for k, v in weights.items()})
+    n = db.rebuild_consensus()
+    return {"ok": True, "weights": weights, "players_recomputed": n}
+
+
+def api_checklist(q, body):
+    cfg = db.get_config()
+    lr = db.meta_get("last_refresh") or {}
+    teams = db.teams()
+    picks = db.picks()
+    fresh = (time.time() - (lr.get("ts") or 0)) < 48 * 3600
+    named = len([t for t in teams if not re.match(r"^Team \d+$", t["name"])])
+    sheet = db.meta_get("sheet", {})
+    items = [
+        {"label": "Live data loaded (not the bundled sample)",
+         "ok": lr.get("source") == "sleeper", "level": "required",
+         "detail": f"current source: {lr.get('source') or 'none'}"},
+        {"label": "Data refreshed in the last 48h",
+         "ok": lr.get("source") == "sleeper" and fresh, "level": "required",
+         "detail": "Data & Setup → Refresh everything"},
+        {"label": "Player pool is full-size",
+         "ok": len(db.all_players()) >= 300, "level": "required",
+         "detail": f"{len(db.all_players())} players"},
+        {"label": "Bye weeks / NFL schedule loaded",
+         "ok": bool(db.meta_get("byes")), "level": "required",
+         "detail": "part of Refresh everything"},
+        {"label": "Market AAV loaded (FantasyPros or CSV)",
+         "ok": any(p.get("market_aav") for p in db.all_players()), "level": "recommended",
+         "detail": "improves blended values"},
+        {"label": "All 10 teams named",
+         "ok": named >= len(teams) - 1, "level": "recommended",
+         "detail": f"{named}/{len(teams)} named"},
+        {"label": "Keepers locked",
+         "ok": any(p["is_keeper"] for p in picks), "level": "recommended",
+         "detail": "Keepers tab — drives budgets & inflation"},
+        {"label": "Last-year prices imported (temperament calibrated)",
+         "ok": len(db.history()) > 0, "level": "recommended",
+         "detail": "Strategy tab measures your room's elite premium"},
+        {"label": "Google Sheet sync configured",
+         "ok": bool(sheet.get("url")), "level": "recommended",
+         "detail": "or plan on manual logging (still fast)"},
+        {"label": "Mock draft rehearsed",
+         "ok": bool(db.meta_get("mock_done")), "level": "recommended",
+         "detail": "Draft Room → Practice mode"},
+    ]
+    required_ok = all(i["ok"] for i in items if i["level"] == "required")
+    return {"items": items, "ready": required_ok}
+
+
+# --- draft-night auto-backup ------------------------------------------------------
+
+def _maybe_backup():
+    picks = db.picks()
+    if not picks or len(picks) % 10 != 0:
+        return
+    try:
+        backup_dir = os.path.join(os.path.dirname(db.DB_PATH), "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        path = os.path.join(backup_dir, f"draft-backup-{len(picks):03d}-picks.json")
+        with open(path, "w") as f:
+            json.dump(api_export({}, {}), f)
+    except OSError:
+        pass  # a failed backup must never block a live draft
 
 
 def api_export(q, body):
@@ -755,6 +856,25 @@ def api_waivers(q, body):
     usage = db.usage_all()
     my_rb_teams = {p["team"]: p for p in my_players
                    if p["position"] == "RB" and p.get("team")}
+
+    # Block bids: what does my closest playoff rival desperately need?
+    records = db.meta_get("records", {})
+    mine_id = db.my_team_id()
+    rival_id, rival_name, rival_weak = None, None, {}
+    if records and _espn_rosters_active():
+        others = [(int(tid), r) for tid, r in records.items() if int(tid) != mine_id]
+        if others:
+            rival_id = max(others, key=lambda x: (x[1].get("wins", 0), x[1].get("pf", 0)))[0]
+            rival_name = next((t["name"] for t in db.teams() if t["id"] == rival_id), None)
+            rival_players = [p for p in pool if p["id"] in
+                             {r["player_id"] for r in db.rosters() if r["team_id"] == rival_id}]
+            by_pos = {}
+            for p in rival_players:
+                by_pos.setdefault(p["position"], []).append(p)
+            for pos, group in by_pos.items():
+                group.sort(key=lambda x: x["points"], reverse=True)
+                n_start = cfg["starters"].get(pos, 1)
+                rival_weak[pos] = group[n_start - 1]["points"] if len(group) >= n_start else 0
     for r in recs:
         pl = r["player"]
         s = sos.get(pl.get("team") or "")
@@ -768,6 +888,10 @@ def api_waivers(q, body):
         if (pl["position"] == "RB" and mine_rb and
                 pl["points"] < mine_rb["points"]):
             r["handcuff_for"] = mine_rb["name"]
+        # Block bid: my top rival would start this guy.
+        if rival_id and pl["position"] in rival_weak and \
+                pl["points"] > rival_weak[pl["position"]] + 12:
+            r["block"] = f"{rival_name} would start him — consider a block bid"
     recs.sort(key=lambda x: -x["score"])
 
     # IR-eligible stashes: don't drop them, move them to IR for a free spot.
@@ -853,6 +977,11 @@ ROUTES = {
     ("POST", "/api/mock/nominate"): api_mock_nominate,
     ("POST", "/api/mock/resolve"): api_mock_resolve,
     ("POST", "/api/season/archive"): api_season_archive,
+    ("POST", "/api/snapshot"): api_snapshot,
+    ("POST", "/api/actuals/refresh"): api_actuals_refresh,
+    ("GET", "/api/scorecard"): api_scorecard,
+    ("POST", "/api/scorecard/weights"): api_scorecard_weights,
+    ("GET", "/api/checklist"): api_checklist,
     ("GET", "/api/export"): api_export,
     ("GET", "/api/waivers"): api_waivers,
     ("POST", "/api/transaction"): api_transaction,

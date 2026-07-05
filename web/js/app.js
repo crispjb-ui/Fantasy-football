@@ -512,8 +512,27 @@ async function renderStrategy(gen) {
       <div class="note" style="margin-top:6px">Example targets only — equivalent tier-mates work the same. Last column is your target range.</div>
     </div>`).join("");
 
+  const sc = await api("/api/scorecard");
+  const scHtml = sc.ready ? `
+    <div class="note" style="margin-bottom:8px">Graded ${sc.graded_players} players vs ${sc.season} actual results.
+      Preseason top-24 hit rate: <b>${sc.top24_hit_rate}%</b>.</div>
+    <table style="margin-bottom:8px"><tr><th>Source</th><th class="r">MAE</th><th class="r">n</th><th class="r">Weight now</th><th class="r">Suggested</th></tr>
+      ${sc.sources.map(s => `<tr><td>${esc(s.source)}</td><td class="r">${s.mae}</td><td class="r dim">${s.n}</td>
+        <td class="r dim">${sc.current_weights[s.source] ?? 1}</td>
+        <td class="r money">${sc.suggested_weights[s.source] ?? "—"}</td></tr>`).join("")}</table>
+    ${Object.keys(sc.suggested_weights).length > 1 ? `<div class="formrow"><button class="btn primary" id="applyWeights">Apply suggested source weights</button></div>` : ""}
+    <div class="note"><b>Biggest steals:</b> ${sc.steals.map(d => `${esc(d.name)} (+${d.diff})`).join(", ") || "—"}</div>
+    <div class="note"><b>Biggest busts:</b> ${sc.busts.map(d => `${esc(d.name)} (${d.diff})`).join(", ") || "—"}</div>
+    <div class="note"><b>Best buys:</b> ${sc.best_buys.map(b => `${esc(b.name)} $${b.price} → ${b.actual} pts`).join("; ") || "—"}</div>
+    <div class="note"><b>Worst buys:</b> ${sc.worst_buys.map(b => `${esc(b.name)} $${b.price} → ${b.actual} pts`).join("; ") || "—"}</div>`
+    : `<div class="note">${esc(sc.why || "")} Take a snapshot before the season, then after the season fetch actuals to grade the model
+       and auto-tune the consensus weights.</div>
+       <div class="formrow"><button class="btn" id="scSnap">📸 Take preseason snapshot</button>
+       <button class="btn primary" id="scActuals">Fetch actual results</button><span class="note" id="scStatus"></span></div>`;
+
   $("#view").innerHTML = `
   <div class="panel"><h2>League temperament</h2>${tempHtml}</div>
+  <div class="panel"><h2>Model scorecard — how did we do last time?</h2>${scHtml}</div>
   <div class="grid2">
     <div>
       <div class="panel"><h2>What kind of team to build (live — uses your remaining budget &amp; the remaining pool)</h2></div>
@@ -558,6 +577,26 @@ async function renderStrategy(gen) {
     await api("/api/config", { elite_premium: st.temperament.estimated_premium });
     toast("Model recalibrated to your league");
     setView(S.view);
+  };
+  const aw = $("#applyWeights");
+  if (aw) aw.onclick = async () => {
+    await api("/api/scorecard/weights", { weights: sc.suggested_weights });
+    toast("Consensus re-weighted by source accuracy");
+    setView(S.view);
+  };
+  const snapBtn = $("#scSnap");
+  if (snapBtn) snapBtn.onclick = async () => {
+    const r = await api("/api/snapshot", {});
+    toast(`Snapshot saved (${r.players} players, ${r.season})`);
+  };
+  const actBtn = $("#scActuals");
+  if (actBtn) actBtn.onclick = async () => {
+    $("#scStatus").textContent = "Fetching…";
+    try {
+      const r = await api("/api/actuals/refresh", {});
+      toast(`Actual results loaded: ${r.players} players`);
+      setView(S.view);
+    } catch (e) { $("#scStatus").textContent = "❌ " + e.message; }
   };
   $$("#view tr[data-pid]").forEach(r => (r.onclick = async () => {
     await setView("draft");
@@ -783,6 +822,10 @@ async function renderLineup(gen) {
             <span class="val">+${u.gain}</span></div>`).join("")}
       </div>` : ""}
       ${oddsHtml}
+      ${(L.horizon || []).some(h => h.byes.length) ? `<div class="panel">
+        <h2>Bye horizon — next 4 weeks</h2>
+        ${L.horizon.map(h => `<div class="note"><b>Wk ${h.week}</b>: ${h.byes.length ? esc(h.byes.join(", ")) + (h.byes.length >= 3 ? ' <span style="color:var(--red)">— plan ahead!</span>' : "") : '<span class="dim">no byes</span>'}</div>`).join("")}
+      </div>` : ""}
       <div class="panel">
         <h2>Streaming — best available D/ST &amp; K this week</h2>
         ${["DST", "K"].map(pos => `
@@ -857,7 +900,7 @@ async function renderTrades(gen) {
         ${sug.suggestions.length ? sug.suggestions.map(s => `
           <div class="result-row">
             <span class="nm"><b>Get</b> <span class="pos pos-${s.get.position}">${s.get.position}</span> ${esc(s.get.name)}
-              <b>for</b> <span class="pos pos-${s.give.position}">${s.give.position}</span> ${esc(s.give.name)}
+              <b>for</b> <span class="pos pos-${s.give.position}">${s.give.position}</span> ${esc(s.give.name)}${s.give2 ? ` + <span class="pos pos-${s.give2.position}">${s.give2.position}</span> ${esc(s.give2.name)} <span class="tag">2-for-1</span>` : ""}
               <span class="meta">from ${esc(s.team)} · you +${s.my_gain_ppw} pts/wk · them ${s.their_gain_ppw >= 0 ? "+" : ""}${s.their_gain_ppw} pts/wk — ${esc(s.pitch)}</span></span>
             <span class="val">+${s.my_gain_ppw}</span>
           </div>`).join("") : `<div class="note">No clear win-win trades found on current rosters. Sync ESPN (Data &amp; Setup) so I can see everyone's real roster.</div>`}
@@ -940,7 +983,8 @@ async function renderWaivers(gen) {
           <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span>${
             r.playoff_sos === "easy" ? ' <span class="tag" style="color:var(--green)" title="easy playoff schedule (wks 15-17)">SOS+</span>' :
             r.playoff_sos === "tough" ? ' <span class="tag" style="color:var(--red)" title="tough playoff schedule (wks 15-17)">SOS−</span>' : ""}${
-            r.handcuff_for ? ` <span class="tag" style="color:var(--purple)" title="backs up your starter">🔗 ${esc(r.handcuff_for)}</span>` : ""}</td>
+            r.handcuff_for ? ` <span class="tag" style="color:var(--purple)" title="backs up your starter">🔗 ${esc(r.handcuff_for)}</span>` : ""}${
+            r.block ? ` <span class="tag" style="color:var(--amber)" title="${esc(r.block)}">🛡 block</span>` : ""}</td>
           <td class="dim">${esc(r.upgrade_over || "—")}</td>
           <td class="r ${r.gap_pts > 0 ? "money" : "dim"}">${r.gap_pts > 0 ? "+" + r.gap_pts : r.gap_pts}</td>
           <td class="r ${r.usage && r.usage.trend === "up" ? "money" : "dim"}" title="touches (targets+carries) by week">${r.usage ? esc(r.usage.text) + (r.usage.trend === "up" ? " 📈" : r.usage.trend === "down" ? " 📉" : "") : ""}</td>
@@ -1029,10 +1073,17 @@ async function renderWaivers(gen) {
 
 async function renderData(gen) {
   await loadApp();
+  const cl = await api("/api/checklist");
   if (stale(gen)) return;
   const a = S.app;
   const lr = a.last_refresh || {};
   $("#view").innerHTML = `
+  <div class="panel" style="${cl.ready ? "border-color:var(--green)" : "border-color:var(--amber)"}">
+    <h2>Draft-day readiness ${cl.ready ? '<span class="hint" style="color:var(--green)">READY</span>' : '<span class="hint" style="color:var(--amber)">NOT READY</span>'}</h2>
+    <div class="grid2" style="gap:4px">
+      ${cl.items.map(i => `<div class="note">${i.ok ? "✅" : (i.level === "required" ? "❌" : "⚠️")} ${esc(i.label)} <span class="dim">— ${esc(i.detail)}</span></div>`).join("")}
+    </div>
+  </div>
   <div class="grid2">
     <div>
       <div class="panel">

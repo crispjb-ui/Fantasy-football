@@ -98,3 +98,22 @@ python3 scripts/selftest.py   # 55 end-to-end checks against a scratch DB
   nomination strategy and bidding-war warnings.
 - **Playoff SOS** rates each NFL team's weeks 15-17 opponents by projected
   D/ST quality — a tiebreaker for waivers and trades, labeled easy/avg/tough.
+
+## Accountability loop (season over season)
+
+1. **Before the season**: the readiness checklist (Data & Setup) verifies
+   everything — fresh live data, byes, keepers, sheet sync, mock rehearsal.
+   A preseason snapshot freezes projections/values (taken automatically when
+   you archive, or manually on the Strategy tab).
+2. **During the draft**: automatic JSON backups every 10 picks
+   (`data/backups/`), so a mid-draft crash costs nothing.
+3. **After the season**: fetch actual results on the Strategy tab. The
+   **model scorecard** grades every projection source (MAE on players that
+   mattered), shows your top-24 hit rate, steals/busts, and best/worst buys —
+   then one click re-weights the consensus by measured accuracy for next year.
+
+### Phone access on draft night
+
+`python3 run.py --host 0.0.0.0 --port 8175` serves the app to any device on
+your Wi-Fi at `http://<laptop-ip>:8175/`. There is no authentication — only
+do this on a network you trust.

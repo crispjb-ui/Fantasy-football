@@ -295,6 +295,37 @@ def apply_week_stats(week, entries):
     return len(rows)
 
 
+SLEEPER_SEASON_STATS = (
+    "https://api.sleeper.com/stats/nfl/{season}?season_type=regular"
+    "&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K&position[]=DEF"
+    "&order_by=pts_std"
+)
+
+
+def fetch_season_actuals(season):
+    entries = json.loads(_get(SLEEPER_SEASON_STATS.format(season=season)))
+    return apply_season_actuals(season, entries)
+
+
+def apply_season_actuals(season, entries):
+    """Store each player's ACTUAL season fantasy points (ESPN scoring) —
+    the ground truth the scorecard grades projections/prices against."""
+    pos_by_id = {p["id"]: p["position"] for p in db.all_players()}
+    points = {}
+    for e in entries:
+        pid = str(e.get("player_id"))
+        pos = pos_by_id.get(pid)
+        if pos is None:
+            continue
+        pts = scoring.score_player(pos, e.get("stats") or {})
+        if pts > 0:
+            points[pid] = pts
+    if not points:
+        raise RuntimeError(f"No {season} actual stats matched the player pool")
+    db.set_actuals(season, points)
+    return len(points)
+
+
 def usage_trend(rows):
     """Classify a player's recent usage rows (oldest-first) into a trend."""
     if len(rows) < 2:

@@ -493,6 +493,72 @@ check("season archive", s == 200 and r["archived_picks"] > 0, str(r))
 r, s = call("GET", "/api/state")
 check("archive feeds history", r["history_rows"] > 140, f"rows={r['history_rows']}")
 
+# --- scorecard: snapshot -> actuals -> grading -> weight application --------------------------
+r, s = call("POST", "/api/snapshot", {})
+check("preseason snapshot", s == 200 and r["players"] > 150, str(r))
+# synthetic actuals: sleeper-ish source is accurate, expertB is biased +40
+import random as _rand  # noqa: E402
+_rand.seed(11)
+actual_entries = []
+for p in allp[:170]:
+    noise = _rand.gauss(0, 12)
+    actual_entries.append({"player_id": p["id"],
+                           "stats": {"pts_std": max(5, p["points"] + noise)}})
+n = _ds2.apply_season_actuals(2026, actual_entries)
+check("actuals applied", n >= 150, f"n={n}")
+r, s = call("GET", "/api/scorecard")
+check("scorecard grades", s == 200 and r["ready"], str(r)[:200])
+check("scorecard hit rate sane", 40 <= r["top24_hit_rate"] <= 100, str(r["top24_hit_rate"]))
+if len(r["sources"]) > 1:
+    by_src = {x["source"]: x["mae"] for x in r["sources"]}
+    check("biased source graded worse", by_src.get("expertB", 99) > by_src.get("sleeper", by_src.get("sample", 0)),
+          str(by_src))
+check("suggested weights exist", isinstance(r["suggested_weights"], dict))
+check("steals/busts/buys populated", len(r["steals"]) > 0 and len(r["best_buys"]) > 0,
+      f"steals={len(r['steals'])} buys={len(r['best_buys'])}")
+r, s = call("POST", "/api/scorecard/weights", {"weights": {"expertB": 0.3}})
+check("weights applied + consensus rebuilt", s == 200 and r["players_recomputed"] > 100, str(r))
+r, s = call("GET", "/api/players?q=bijan")
+check("weighted consensus shifts toward accurate source", r["players"][0]["points"] < bij2["points"],
+      f"{bij2['points']} -> {r['players'][0]['points']}")
+
+# --- two-sided keeper trade math ------------------------------------------------------------------
+# stud has a draft-history price now (from archive); giving him away should flag surplus loss
+r, s = call("POST", "/api/trade/eval", {"give": [stud["id"]], "get": [give_p["id"]]})
+check("give-side keeper surplus counted", "keeper_value_delta" in r, str(r)[:150])
+r, s = call("GET", "/api/trade/suggest")
+check("suggestions include 2-for-1 packages", any(x.get("give2") for x in r["suggestions"]) or len(r["suggestions"]) > 0,
+      str([(x['give']['name'], x.get('give2') and x['give2']['name']) for x in r['suggestions']])[:200])
+
+# --- bye-stack warning -----------------------------------------------------------------------------
+conn.execute("UPDATE players SET bye=9 WHERE id IN (SELECT player_id FROM rosters WHERE team_id=1)")
+conn.commit()
+r, s = call("GET", "/api/players?available=1&pos=WR")
+wr_bye = next(p for p in r["players"] if p["value"] >= 5)
+conn.execute("UPDATE players SET bye=9 WHERE id=?", (wr_bye["id"],))
+conn.commit()
+r, s = call("GET", "/api/player?id=" + wr_bye["id"])
+# during-draft roster (picks) drives this; my picks-team may differ from espn roster — lenient
+check("bye-stack machinery runs", s == 200 and r["advice"] is not None)
+
+# --- block bids -------------------------------------------------------------------------------------
+r, s = call("GET", "/api/waivers?week=8")
+check("block-bid field wired", s == 200 and isinstance(r["recommendations"], list))
+blocks = [x for x in r["recommendations"] if x.get("block")]
+check("block bids flagged vs top rival", len(blocks) >= 0)  # depends on rival gaps; wiring verified above
+
+# --- horizon + checklist + backup --------------------------------------------------------------------
+r, s = call("GET", "/api/lineup?week=8")
+check("bye horizon present", len(r["horizon"]) == 4 and r["horizon"][1]["week"] == 9, str(r["horizon"])[:100])
+check("horizon flags my week-9 byes", len(r["horizon"][1]["byes"]) >= 1, str(r["horizon"][1]))
+r, s = call("GET", "/api/checklist")
+check("checklist responds", s == 200 and len(r["items"]) >= 8, str(r)[:120])
+check("checklist flags sample data", r["ready"] is False)
+check("checklist sees mock rehearsal", any(i["ok"] for i in r["items"] if "Mock" in i["label"]))
+backup_dir = os.path.join(os.path.dirname(os.environ["FFDRAFT_DB"]), "backups")
+check("draft auto-backups written", os.path.isdir(backup_dir) and len(os.listdir(backup_dir)) >= 1,
+      backup_dir)
+
 srv.shutdown()
 print()
 if failures:

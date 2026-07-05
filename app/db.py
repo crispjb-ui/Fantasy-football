@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS proj_sources (
     points REAL DEFAULT 0,
     PRIMARY KEY (source, player_id)
 );
+CREATE TABLE IF NOT EXISTS actuals (
+    season INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    points REAL DEFAULT 0,
+    PRIMARY KEY (season, player_id)
+);
 CREATE TABLE IF NOT EXISTS week_stats (
     week INTEGER NOT NULL,
     player_id TEXT NOT NULL,
@@ -334,20 +340,41 @@ def proj_source_names():
 
 
 def rebuild_consensus():
-    """players.points <- mean across projection sources; proj_sigma <- their
-    disagreement. With one source this is a no-op beyond sigma=0."""
+    """players.points <- weighted mean across projection sources (weights
+    come from the season-end scorecard's accuracy grading; default 1.0);
+    proj_sigma <- source disagreement."""
     conn = connect()
-    rows = conn.execute("SELECT player_id, points FROM proj_sources").fetchall()
+    weights = meta_get("source_weights", {})
+    rows = conn.execute("SELECT source, player_id, points FROM proj_sources").fetchall()
     acc = {}
     for r in rows:
-        acc.setdefault(r["player_id"], []).append(r["points"])
+        w = float(weights.get(r["source"], 1.0))
+        acc.setdefault(r["player_id"], []).append((r["points"], w))
     for pid, pts in acc.items():
-        mean = sum(pts) / len(pts)
-        var = sum((x - mean) ** 2 for x in pts) / len(pts)
+        wsum = sum(w for _, w in pts) or 1.0
+        mean = sum(p * w for p, w in pts) / wsum
+        var = sum((p - mean) ** 2 for p, _ in pts) / len(pts)
         conn.execute("UPDATE players SET points=?, proj_sigma=? WHERE id=?",
                      (round(mean, 1), round(var ** 0.5, 1), pid))
     conn.commit()
     return len(acc)
+
+
+# --- season actual results (scorecard inputs) ------------------------------------
+
+def set_actuals(season, points_by_id):
+    conn = connect()
+    conn.execute("DELETE FROM actuals WHERE season=?", (season,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO actuals (season, player_id, points) VALUES (?,?,?)",
+        [(season, pid, pts) for pid, pts in points_by_id.items() if pts != 0],
+    )
+    conn.commit()
+
+
+def actuals(season):
+    return {r["player_id"]: r["points"] for r in connect().execute(
+        "SELECT player_id, points FROM actuals WHERE season=?", (season,)).fetchall()}
 
 
 # --- usage (actual weekly stats) --------------------------------------------------
