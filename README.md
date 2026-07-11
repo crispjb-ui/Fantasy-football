@@ -9,6 +9,11 @@ It does not draft for you — it tells you, in real time, what every player is
 worth **in your league**, what your room will actually pay, when to push and
 when to walk, and then supports keeper, trade and waiver decisions all season.
 
+> **📖 New here, or coming back after a while? Read [GUIDE.md](GUIDE.md)** —
+> the complete beginning-to-end manual: first install, the smoke test to run
+> now, draft-week prep, the draft-night runbook, the weekly in-season
+> routine, end-of-season steps, and troubleshooting.
+
 ## Quick start
 
 ```bash
