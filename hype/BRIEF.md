@@ -18,8 +18,10 @@ Everything Brett has specified so far. Production waits until he gives the go
   the Bills-Bengals game was suspended (Damar Hamlin, Wk 17); Kevin had a
   Bengal knocked out in Q1 and trailed Singer by less than a point, and Singer
   conceded the title anyway. Legendary sportsmanship beat — use it in the
-  champions-wall scene. The 2006 (Lesesne/LaSizzle) asterisk is still
-  unexplained — ask Brett.
+  champions-wall scene. **2006 asterisk = The Autopilot**: Yahoo league,
+  total-points format, Lesesne AUTO-DRAFTED — the autopick took LaDainian
+  Tomlinson (greatest fantasy season ever) 1st overall and Drew Brees — and
+  he won the inaugural title without attending the draft.
 - Timothy Martin played 2007 only (finished 2nd); Brian Byrd took the seat in 2008.
 
 ## Look & feel

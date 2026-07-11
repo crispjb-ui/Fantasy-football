@@ -26,7 +26,7 @@ export const MAP_FPS = 30;
 const HOLD_CH = 70; // tight on Chapel Hill
 const ZOOM_OUT_END = 160; // full USA visible
 const ARCS_DONE = 280; // all arcs landed
-const PER_STOP = 85; // frames per manager in the countdown
+const PER_STOP = 100; // frames per manager in the countdown
 const COUNTDOWN_START = ARCS_DONE;
 const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
 export const MAP_DURATION = COUNTDOWN_END + 110; // pull back + hold
@@ -135,7 +135,10 @@ const font: React.CSSProperties = {
   color: WHITE,
 };
 
-export const MapCountdown: React.FC = () => {
+/* standalone=false when embedded in the full Film (its closer is handled there) */
+export const MAP_EMBED_DURATION = COUNTDOWN_END + 60;
+
+export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = true }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const cam = camera(frame);
@@ -159,43 +162,22 @@ export const MapCountdown: React.FC = () => {
           <path d={NATION_D} fill="#12294a" stroke={CAROLINA} strokeWidth={2 / cam.s} />
           <path d={STATES_D} fill="none" stroke={CAROLINA} strokeOpacity={0.28} strokeWidth={0.8 / cam.s} />
 
-          {/* Chapel Hill beacon + interlocking-NC mark */}
+          {/* Chapel Hill beacon + the real interlocking NC */}
           {(() => {
             const pulse = 1 + 0.25 * Math.sin(frame / 7);
             const k = 1 / Math.sqrt(cam.s); // gentle counter-scale so it reads at every zoom
-            const serif: React.CSSProperties = {
-              fontFamily: "Georgia, 'Times New Roman', serif",
-              fontWeight: 900,
-            };
+            const lw = 52 * k; // logo width (unc.png is 211x176)
+            const lh = lw * (176 / 211);
             return (
               <g>
-                <circle cx={CH[0]} cy={CH[1]} r={16 * pulse * k} fill={CAROLINA} opacity={0.22} />
-                <circle cx={CH[0]} cy={CH[1]} r={22 * k} fill={NAVY_DEEP} opacity={0.85} stroke={CAROLINA} strokeWidth={1.2 * k} />
-                {/* interlocking NC, UNC-style: C behind, N threaded through its mouth */}
-                <text
-                  x={CH[0]}
-                  y={CH[1] + 10.5 * k}
-                  textAnchor="middle"
-                  style={serif}
-                  fontSize={30 * k}
-                  fill={CAROLINA_LIGHT}
-                  stroke={NAVY_DEEP}
-                  strokeWidth={0.8 * k}
-                >
-                  C
-                </text>
-                <text
-                  x={CH[0]}
-                  y={CH[1] + 7.5 * k}
-                  textAnchor="middle"
-                  style={serif}
-                  fontSize={21 * k}
-                  fill={WHITE}
-                  stroke={NAVY_DEEP}
-                  strokeWidth={0.7 * k}
-                >
-                  N
-                </text>
+                <circle cx={CH[0]} cy={CH[1]} r={30 * pulse * k} fill={CAROLINA} opacity={0.2} />
+                <image
+                  href={staticFile("logos/unc.png")}
+                  x={CH[0] - lw / 2}
+                  y={CH[1] - lh / 2}
+                  width={lw}
+                  height={lh}
+                />
               </g>
             );
           })()}
@@ -392,7 +374,7 @@ export const MapCountdown: React.FC = () => {
         })()}
 
       {/* closer */}
-      {frame >= COUNTDOWN_END + 40 && (
+      {standalone && frame >= COUNTDOWN_END + 40 && (
         <div
           style={{
             ...font,

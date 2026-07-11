@@ -294,7 +294,7 @@ export const STANDINGS: Record<number, SeasonRow[]> = {
 };
 
 export const CHAMPIONS: { year: number; team: string; manager: string; key: string }[] = [
-  { year: 2006, team: "LaSizzle", manager: "Brian Lesesne", key: "Lesesne" },  // * on the plaque — meaning TBD
+  { year: 2006, team: "LaSizzle", manager: "Brian Lesesne", key: "Lesesne" },  // * Yahoo total-points league; Lesesne AUTO-DRAFTED (LT + Brees fell to him) and won it all
   { year: 2007, team: "Charm City Smash", manager: "James Farmer", key: "Farmer" },
   { year: 2008, team: "Bronco Bound", manager: "Justin Singer", key: "Singer" },
   { year: 2009, team: "Living Legends", manager: "Brett Link", key: "Link" },
