@@ -159,13 +159,43 @@ export const MapCountdown: React.FC = () => {
           <path d={NATION_D} fill="#12294a" stroke={CAROLINA} strokeWidth={2 / cam.s} />
           <path d={STATES_D} fill="none" stroke={CAROLINA} strokeOpacity={0.28} strokeWidth={0.8 / cam.s} />
 
-          {/* Chapel Hill beacon */}
+          {/* Chapel Hill beacon + interlocking-NC mark */}
           {(() => {
             const pulse = 1 + 0.25 * Math.sin(frame / 7);
+            const k = 1 / Math.sqrt(cam.s); // gentle counter-scale so it reads at every zoom
+            const serif: React.CSSProperties = {
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              fontWeight: 900,
+            };
             return (
               <g>
-                <circle cx={CH[0]} cy={CH[1]} r={(13 * pulse) / Math.sqrt(cam.s)} fill={CAROLINA} opacity={0.25} />
-                <circle cx={CH[0]} cy={CH[1]} r={6 / Math.sqrt(cam.s)} fill={CAROLINA_LIGHT} />
+                <circle cx={CH[0]} cy={CH[1]} r={16 * pulse * k} fill={CAROLINA} opacity={0.22} />
+                <circle cx={CH[0]} cy={CH[1]} r={22 * k} fill={NAVY_DEEP} opacity={0.85} stroke={CAROLINA} strokeWidth={1.2 * k} />
+                {/* interlocking NC, UNC-style: C behind, N threaded through its mouth */}
+                <text
+                  x={CH[0]}
+                  y={CH[1] + 10.5 * k}
+                  textAnchor="middle"
+                  style={serif}
+                  fontSize={30 * k}
+                  fill={CAROLINA_LIGHT}
+                  stroke={NAVY_DEEP}
+                  strokeWidth={0.8 * k}
+                >
+                  C
+                </text>
+                <text
+                  x={CH[0]}
+                  y={CH[1] + 7.5 * k}
+                  textAnchor="middle"
+                  style={serif}
+                  fontSize={21 * k}
+                  fill={WHITE}
+                  stroke={NAVY_DEEP}
+                  strokeWidth={0.7 * k}
+                >
+                  N
+                </text>
               </g>
             );
           })()}
