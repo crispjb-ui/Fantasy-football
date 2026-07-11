@@ -54,22 +54,28 @@ td.r, th.r { text-align: right; }
 
 /* TV mode */
 .tv { text-align: center; }
-.tv .tvhead { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.tv .nominating { font-size: 3.2vw; font-weight: 800; }
-.tv .lastsale { font-size: 2.4vw; color: var(--green); margin: 1vh 0; }
-.tv .timer { font-size: 4vw; font-weight: 900; }
+.tv .tvhead { display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 6px 10px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); flex-wrap: wrap; }
+.tv .leaguename { font-size: 1.7vw; font-weight: 900; letter-spacing: .05em; white-space: nowrap; }
+.tv .nominating { font-size: 1.7vw; font-weight: 500; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.tv .nominating b { font-weight: 800; }
+.tv .lastsale { font-size: 1.7vw; color: var(--green); white-space: nowrap; }
+.tv .tvright { display: flex; align-items: center; gap: 12px; }
+.tv .timer { font-size: 2.2vw; font-weight: 900; }
 .tv .timer.low { color: var(--red); }
 .tv .teamgrid, .tv .bagrid, .tv .result { text-align: left; }
-.tv .ticker { color: var(--muted); font-size: 1.4vw; margin-top: 1.5vh; }
+.tv .ticker { color: var(--muted); font-size: 1.2vw; margin-top: 1.2vh; }
 
 /* ESPN-style draft board wall */
 .board { display: grid; gap: 3px; margin-top: 8px; }
 .bcolhead { cursor: pointer; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px 6px 0 0;
-  padding: 4px 2px; text-align: center; }
+  padding: 5px 3px; text-align: center; min-width: 0; overflow: hidden; }
 .bcolhead.nom { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.bteam { font-weight: 800; font-size: 0.95vw; white-space: nowrap; overflow: hidden;
+.bteam { font-weight: 800; font-size: 0.85vw; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
-.bmoney { font-size: 0.85vw; color: var(--green); font-weight: 700; }
+.bmoney { font-size: 0.8vw; color: var(--green); font-weight: 700; white-space: nowrap; }
 .bmoney .dim { color: var(--muted); font-weight: 400; }
 .cell { border-radius: 4px; padding: 2px 4px; min-height: 3.1vh; display: flex;
   flex-direction: column; justify-content: center; text-align: left; overflow: hidden; }

@@ -35,6 +35,7 @@ DEFAULTS = {
     "min_bid": 1,
     "timer_seconds": 0,       # 0 = no auction clock (offline room, results-only entry)
     "season": 2026,
+    "league_name": "League Draft Room",
 }
 
 SLEEPER_PLAYERS = "https://api.sleeper.app/v1/players/nfl"
@@ -165,7 +166,7 @@ def _dashboard(rows):
         remaining_ranked[pos] = len(real)
         best[pos] = [{"name": p["name"], "nfl": p["nfl_team"],
                       "adp": round(p["adp"], 1) if p["adp"] < 600 else None}
-                     for p in (real + filler)[:4]]
+                     for p in (real + filler)[:8]]
     drafted_pos = {}
     for r in rows:
         drafted_pos[r["pos"] or "?"] = drafted_pos.get(r["pos"] or "?", 0) + 1
@@ -202,6 +203,7 @@ def board():
         "on_deck": teams.get(order[(idx + 1) % len(order)], {}).get("name") if order else None,
         "pace": pace,
         "timer_seconds": setting("timer_seconds"),
+        "league_name": setting("league_name"),
         "last_pick_ts": rows[-1]["ts"] if rows else None,
         "pool_size": connect().execute("SELECT COUNT(*) FROM pool").fetchone()[0],
         **_dashboard(rows),
@@ -314,6 +316,8 @@ def api_setup(q, body):
     for k in ("budget", "roster_size", "min_bid", "timer_seconds", "season"):
         if body.get(k) is not None:
             meta_set(f"s_{k}", int(body[k]))
+    if body.get("league_name") is not None:
+        meta_set("s_league_name", str(body["league_name"]).strip() or DEFAULTS["league_name"])
     if body.get("new_pin"):
         meta_set("s_pin", str(body["new_pin"]))
     if body.get("nom_order"):

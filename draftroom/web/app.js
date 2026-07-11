@@ -68,6 +68,7 @@ function recentList(n) {
 function render(full = true) {
   if (!S.board) { $("#app").innerHTML = `<div class="panel note">Connecting…</div>`; return; }
   const v = S.view;
+  $("#app").style.maxWidth = v === "tv" ? "97vw" : "";   // TV uses the whole screen
   if (v === "score") renderScore();
   else if (v === "tv") renderTV();
   else if (v.startsWith("team")) renderTeam(+v.slice(4));
@@ -78,7 +79,7 @@ function render(full = true) {
 function renderHome() {
   $("#app").innerHTML = `
   <div class="panel" style="text-align:center">
-    <h2>League Draft Room</h2>
+    <h2>${esc(S.board.league_name || "League Draft Room")}</h2>
     <div style="font-size:22px;font-weight:800;margin:6px 0 14px">${S.board.picks_made}/${S.board.picks_total} picks · Nominating: ${esc(S.board.nominating || "—")}</div>
     <button class="btn big" onclick="location.hash='tv'">📺 TV mode (big screen / Zoom share)</button>
     <button class="btn big" onclick="location.hash='score'">🔨 Scorekeeper</button>
@@ -223,8 +224,8 @@ function bestAvailableGrid(compact) {
     return `<div class="note">Load ADP in Setup (Sleeper button or paste ESPN ADP CSV) to show best available by position.</div>`;
   }
   const positions = compact ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K", "DST"];
-  return `<div class="bagrid">` + positions.map(pos => {
-    const list = b.best_available[pos] || [];
+  return `<div class="bagrid" ${compact ? "" : `style="grid-template-columns:repeat(${positions.length},minmax(0,1fr))"`}>` + positions.map(pos => {
+    const list = (b.best_available[pos] || []).slice(0, compact ? 4 : 8);
     return `<div class="bacol">
       <div class="bahead"><span class="pos pos-${pos}">${pos}</span>
         <span class="dim" style="white-space:nowrap">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>
@@ -248,7 +249,7 @@ function draftBoard() {
   const rows = Math.max(...b.teams.map(t => t.roster.length), 8);
   const size = b.teams[0] ? b.teams[0].roster.length + b.teams[0].slots_left : 16;
   const nRows = Math.min(size, Math.max(rows + 1, 8));
-  let html = `<div class="board" style="grid-template-columns:repeat(${b.teams.length},1fr)">`;
+  let html = `<div class="board" style="grid-template-columns:repeat(${b.teams.length},minmax(0,1fr))">`;
   for (const t of b.teams) {
     html += `<div class="bcolhead ${b.nominating === t.name ? "nom" : ""}" data-focus="${t.id}" title="click to spotlight this team">
       <div class="bteam">${esc(t.name)}${b.nominating === t.name ? " 🎤" : ""}</div>
@@ -302,11 +303,12 @@ function renderTV() {
   $("#app").innerHTML = `
   <div class="tv">
     <div class="tvhead">
-      <div class="nominating">🎤 ${esc(b.nominating || "Draft Room")}
-        ${b.on_deck ? `<span class="dim" style="font-size:1.4vw">on deck: ${esc(b.on_deck)}</span>` : ""}</div>
-      ${last ? `<div class="lastsale">🔨 ${esc(last.name)} → ${esc(last.team)} $${last.price}</div>` : ""}
-      ${b.timer_seconds > 0 ? `<div class="timer ${secs <= 10 ? "low" : ""}">${secs}s</div>` : ""}
-      <a href="#home" class="dim" style="font-size:12px">exit</a>
+      <div class="leaguename">🏈 ${esc(b.league_name)}</div>
+      <div class="nominating">🎤 <b>${esc(b.nominating || "Draft Room")}</b> nominating
+        ${b.on_deck ? `<span class="dim">· on deck: ${esc(b.on_deck)}</span>` : ""}</div>
+      ${last ? `<div class="lastsale">🔨 ${esc(shortName(last.name))} → ${esc(last.team)} <b>$${last.price}</b></div>` : "<div></div>"}
+      <div class="tvright">${b.timer_seconds > 0 ? `<span class="timer ${secs <= 10 ? "low" : ""}">${secs}s</span>` : ""}
+        <a href="#home" class="dim" style="font-size:12px">exit</a></div>
     </div>
     ${S.tvFocus ? teamSpotlight() : draftBoard()}
     <div class="panel" style="margin-top:10px"><h2>Best available (market ADP)</h2>${bestAvailableGrid(false)}</div>
@@ -333,6 +335,7 @@ function renderSetup() {
         <input type="number" value="${t.budget}" data-bg="${t.id}" style="width:90px">
       </div>`).join("")}
     <div class="row">
+      <label class="note">League name <input type="text" id="leagueName" value="${esc(S.board.league_name || "")}" style="width:200px"></label>
       <label class="note">Timer (s, 0 = off) <input type="number" id="timer" value="${S.board.timer_seconds}" style="width:80px"></label>
       <label class="note">Season <input type="number" id="season" value="2026" style="width:90px"></label>
       <label class="note">New PIN <input type="text" id="newpin" placeholder="unchanged" style="width:100px"></label>
@@ -370,6 +373,7 @@ function renderSetup() {
         })),
         timer_seconds: +$("#timer").value,
         season: +$("#season").value || null,
+        league_name: $("#leagueName").value,
         new_pin: $("#newpin").value || null,
       });
       toast("Setup saved");
