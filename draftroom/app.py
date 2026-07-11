@@ -168,7 +168,7 @@ def _dashboard(rows):
         remaining_ranked[pos] = len(avail)
         best[pos] = [{"name": p["name"], "nfl": p["nfl_team"],
                       "adp": round(p["adp"], 1) if (p["adp"] is not None and p["adp"] < 600) else None}
-                     for p in (real + filler)[:8]]
+                     for p in (real + filler)[:30]]
     drafted_pos = {}
     for r in rows:
         drafted_pos[r["pos"] or "?"] = drafted_pos.get(r["pos"] or "?", 0) + 1

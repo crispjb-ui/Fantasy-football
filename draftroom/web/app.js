@@ -42,7 +42,9 @@ async function refresh() {
     const b = await api("/api/board");
     const changed = !S.board || b.picks_made !== S.board.picks_made;
     S.board = b;
-    if (changed || S.view === "tv") render(false);
+    // TV only re-renders on change (or every tick when a countdown is on),
+    // so scrolling the best-available columns isn't constantly reset.
+    if (changed || (S.view === "tv" && b.timer_seconds > 0)) render(false);
   } catch (e) { /* transient */ }
 }
 setInterval(refresh, 2500);
@@ -69,6 +71,10 @@ function render(full = true) {
   if (!S.board) { $("#app").innerHTML = `<div class="panel note">Connecting…</div>`; return; }
   const v = S.view;
   $("#app").style.maxWidth = v === "tv" ? "97vw" : "";   // TV uses the whole screen
+  // Keep best-available column scroll positions across re-renders.
+  const scrolls = $$(".bacol").map(el => el.scrollTop);
+  const restore = () => $$(".bacol").forEach((el, i) => { if (scrolls[i]) el.scrollTop = scrolls[i]; });
+  setTimeout(restore, 0);
   if (v === "score") renderScore();
   else if (v === "tv") renderTV();
   else if (v.startsWith("team")) renderTeam(+v.slice(4));
@@ -225,7 +231,7 @@ function bestAvailableGrid(compact) {
   }
   const positions = compact ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K", "DST"];
   return `<div class="bagrid" ${compact ? "" : `style="grid-template-columns:repeat(${positions.length},minmax(0,1fr))"`}>` + positions.map(pos => {
-    const list = (b.best_available[pos] || []).slice(0, compact ? 4 : 8);
+    const list = (b.best_available[pos] || []).slice(0, compact ? 12 : 30);
     return `<div class="bacol">
       <div class="bahead"><span class="pos pos-${pos}">${pos}</span>
         <span class="dim" style="white-space:nowrap">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>

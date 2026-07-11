@@ -95,8 +95,13 @@ td.r, th.r { text-align: right; }
 
 /* best-available grid */
 .bagrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-.bacol { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
-.bahead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+.bacol { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+  max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; }
+.tv .bacol { max-height: 30vh; }
+.bacol::-webkit-scrollbar { width: 6px; }
+.bacol::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.bahead { position: sticky; top: -8px; background: var(--bg3); padding: 8px 0 4px; z-index: 1; }
+.bahead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;
   font-size: 12px; }
 .barow { padding: 4px 2px; border-top: 1px solid var(--border); font-size: 14px; }
 .barow .banm { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
