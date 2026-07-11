@@ -89,12 +89,12 @@ td.r, th.r { text-align: right; }
 .bacol { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
 .bahead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
   font-size: 12px; }
-.barow { padding: 4px 2px; border-top: 1px solid var(--border); display: flex;
-  justify-content: space-between; gap: 6px; font-size: 14px; }
-.barow .banm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barow .bameta { color: var(--muted); white-space: nowrap; font-size: 0.85em; align-self: center; }
+.barow { padding: 4px 2px; border-top: 1px solid var(--border); font-size: 14px; }
+.barow .banm { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.barow .bameta { display: block; color: var(--muted); font-size: 0.8em; white-space: nowrap; }
 .barow.top .banm { color: var(--green); }
-.tv .barow { font-size: 1.35vw; } .tv .bahead { font-size: 1.1vw; }
+.tv .barow { font-size: 1.05vw; } .tv .bahead { font-size: 0.95vw; }
 
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--bg3); border: 2px solid var(--border); border-radius: 10px;

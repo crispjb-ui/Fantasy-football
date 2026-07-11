@@ -33,7 +33,7 @@ DEFAULTS = {
     "budget": 500,
     "roster_size": 16,
     "min_bid": 1,
-    "timer_seconds": 30,
+    "timer_seconds": 0,       # 0 = no auction clock (offline room, results-only entry)
     "season": 2026,
 }
 
@@ -159,10 +159,13 @@ def _dashboard(rows):
         ranked = conn.execute(
             "SELECT * FROM pool WHERE position=? AND adp IS NOT NULL ORDER BY adp",
             (pos,)).fetchall()
-        avail = [p for p in ranked if p["id"] not in drafted_ids]
-        remaining_ranked[pos] = len(avail)
-        best[pos] = [{"name": p["name"], "nfl": p["nfl_team"], "adp": round(p["adp"], 1)}
-                     for p in avail[:4]]
+        # Sleeper marks basically-undrafted players ADP 999 — treat as unranked.
+        real = [p for p in ranked if p["adp"] < 600 and p["id"] not in drafted_ids]
+        filler = [p for p in ranked if p["adp"] >= 600 and p["id"] not in drafted_ids]
+        remaining_ranked[pos] = len(real)
+        best[pos] = [{"name": p["name"], "nfl": p["nfl_team"],
+                      "adp": round(p["adp"], 1) if p["adp"] < 600 else None}
+                     for p in (real + filler)[:4]]
     drafted_pos = {}
     for r in rows:
         drafted_pos[r["pos"] or "?"] = drafted_pos.get(r["pos"] or "?", 0) + 1

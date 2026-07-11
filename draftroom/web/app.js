@@ -222,9 +222,10 @@ function bestAvailableGrid(compact) {
     const list = b.best_available[pos] || [];
     return `<div class="bacol">
       <div class="bahead"><span class="pos pos-${pos}">${pos}</span>
-        <span class="dim">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>
+        <span class="dim" style="white-space:nowrap">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>
       ${list.map((p, i) => `<div class="barow ${i === 0 ? "top" : ""}" title="${esc(p.name)}">
-        <span class="banm">${esc(shortName(p.name))}</span><span class="bameta">${esc(p.nfl || "")} ${p.adp}</span>
+        <span class="banm">${esc(p.name)}</span>
+        <span class="bameta">${esc(p.nfl || "")}${p.adp != null ? ` · ADP ${p.adp}` : ""}</span>
       </div>`).join("") || '<div class="note">none ranked left</div>'}
     </div>`;
   }).join("") + `</div>`;
@@ -299,7 +300,7 @@ function renderTV() {
       <div class="nominating">🎤 ${esc(b.nominating || "Draft Room")}
         ${b.on_deck ? `<span class="dim" style="font-size:1.4vw">on deck: ${esc(b.on_deck)}</span>` : ""}</div>
       ${last ? `<div class="lastsale">🔨 ${esc(last.name)} → ${esc(last.team)} $${last.price}</div>` : ""}
-      <div class="timer ${secs <= 10 ? "low" : ""}">${secs}s</div>
+      ${b.timer_seconds > 0 ? `<div class="timer ${secs <= 10 ? "low" : ""}">${secs}s</div>` : ""}
       <a href="#home" class="dim" style="font-size:12px">exit</a>
     </div>
     ${S.tvFocus ? teamSpotlight() : draftBoard()}
@@ -327,7 +328,7 @@ function renderSetup() {
         <input type="number" value="${t.budget}" data-bg="${t.id}" style="width:90px">
       </div>`).join("")}
     <div class="row">
-      <label class="note">Timer (s) <input type="number" id="timer" value="${S.board.timer_seconds}" style="width:80px"></label>
+      <label class="note">Timer (s, 0 = off) <input type="number" id="timer" value="${S.board.timer_seconds}" style="width:80px"></label>
       <label class="note">Season <input type="number" id="season" value="2026" style="width:90px"></label>
       <label class="note">New PIN <input type="text" id="newpin" placeholder="unchanged" style="width:100px"></label>
       <button class="btn primary" id="save">Save setup</button>
