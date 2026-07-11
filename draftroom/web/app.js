@@ -219,7 +219,7 @@ function slotify(roster, benchN) {
     else bench.push(p);
   }
   const rows = [];
-  for (const [slot, n] of [["QB", 1], ["RB", 2], ["WR", 2], ["TE", 1], ["FLEX", 1], ["DST", 1], ["K", 1]]) {
+  for (const [slot, n] of [["QB", 1], ["RB", 2], ["WR", 2], ["FLEX", 1], ["TE", 1], ["DST", 1], ["K", 1]]) {
     for (let i = 0; i < n; i++) rows.push({ slot, player: filled[slot][i] || null });
   }
   const benchRows = [];
