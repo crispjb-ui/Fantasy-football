@@ -122,7 +122,8 @@ check("best available RB skips drafted", r["best_available"]["RB"][0]["name"] ==
       str(r["best_available"]["RB"][:2]))
 check("best available WR skips drafted", r["best_available"]["WR"][0]["name"] == "Player 8",
       str(r["best_available"]["WR"][:2]))
-check("remaining/drafted counts", r["remaining_ranked"]["RB"] == 2 and r["drafted_pos"].get("RB", 0) >= 1,
+check("remaining/drafted counts (all available, not just ADP-ranked)",
+      r["remaining_ranked"]["RB"] == 7 and r["drafted_pos"].get("RB", 0) >= 1,
       str((r["remaining_ranked"], r["drafted_pos"])))
 check("money stats", r["money"]["spent"] > 0 and r["money"]["top"] >= 445, str(r["money"]))
 
@@ -138,6 +139,12 @@ n = room.load_pool_from_sleeper({
 check("active kicker without search_rank loads", n == 1, f"n={n}")
 r, s = call("GET", "/api/players?q=obscure kicker")
 check("kicker searchable", any(p["name"] == "Obscure Kicker" for p in r["players"]), str(r))
+r, s = call("GET", "/api/board")
+check("no-ADP kicker still on best-available board",
+      any(x["name"] == "Obscure Kicker" for x in r["best_available"]["K"]),
+      str(r["best_available"]["K"]))
+check("'left' counts include unranked players", r["remaining_ranked"]["K"] >= 1,
+      str(r["remaining_ranked"]))
 
 # --- sync + exports ------------------------------------------------------------------
 r, s = call("GET", "/api/sync")

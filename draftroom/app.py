@@ -157,15 +157,17 @@ def _dashboard(rows):
     drafted_ids = {r["pool_id"] for r in rows}
     best, remaining_ranked = {}, {}
     for pos in ("QB", "RB", "WR", "TE", "K", "DST"):
-        ranked = conn.execute(
-            "SELECT * FROM pool WHERE position=? AND adp IS NOT NULL ORDER BY adp",
-            (pos,)).fetchall()
-        # Sleeper marks basically-undrafted players ADP 999 — treat as unranked.
-        real = [p for p in ranked if p["adp"] < 600 and p["id"] not in drafted_ids]
-        filler = [p for p in ranked if p["adp"] >= 600 and p["id"] not in drafted_ids]
-        remaining_ranked[pos] = len(real)
+        avail = [p for p in conn.execute(
+            "SELECT * FROM pool WHERE position=? ORDER BY name", (pos,))
+            if p["id"] not in drafted_ids]
+        # Sleeper marks basically-undrafted players ADP 999 — treat as
+        # unranked, and players with no ADP at all (most K/DST) still list.
+        real = sorted((p for p in avail if p["adp"] is not None and p["adp"] < 600),
+                      key=lambda p: p["adp"])
+        filler = [p for p in avail if p["adp"] is None or p["adp"] >= 600]
+        remaining_ranked[pos] = len(avail)
         best[pos] = [{"name": p["name"], "nfl": p["nfl_team"],
-                      "adp": round(p["adp"], 1) if p["adp"] < 600 else None}
+                      "adp": round(p["adp"], 1) if (p["adp"] is not None and p["adp"] < 600) else None}
                      for p in (real + filler)[:8]]
     drafted_pos = {}
     for r in rows:
