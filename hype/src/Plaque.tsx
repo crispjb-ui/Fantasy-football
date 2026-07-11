@@ -2,28 +2,92 @@ import React from "react";
 import {
   AbsoluteFill,
   Easing,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { CHAMPIONS } from "./data";
 
-/* Digital recreation of the real rotating Champions Club plaque:
-   dark wood, Carolina-blue band, gold plates, four empty rows waiting. */
+/* The REAL Champions Club plaque (photo from James' wall), treated
+   cinematically: slow push-ins to the actual plates for the story beats. */
 
 const CAROLINA = "#7BAFD4";
-const WOOD_DARK = "#2b1c10";
-const WOOD = "#3a2817";
 const WHITE = "#f4f8fc";
+const BG = "#0a0806";
 
 export const PLAQUE_DURATION = 840;
+export const PLAQUE_FINALE_DURATION = 280;
 
-const PLATE_IN_START = 55;
-const PLATE_STAGGER = 11;
-const AUTOPILOT_AT = PLATE_IN_START + 20 * PLATE_STAGGER + 50; // both asterisk stories get a beat
-const CONCESSION_AT = AUTOPILOT_AT + 170;
-const NEXT_AT = CONCESSION_AT + 190;
+/* photo geometry (public/plaque.png) */
+const IMG_W = 1072;
+const IMG_H = 1415;
+
+/* focus keyframes: (image-px focus point, zoom). Beats:
+   full reveal -> 2006 LaSizzle plate -> 2022 poop shoot plate -> empty rows -> pull back */
+type Pkf = { t: number; fx: number; fy: number; s: number };
+const PKFS: Pkf[] = [
+  { t: 0, fx: 536, fy: 690, s: 0.98 },
+  { t: 140, fx: 536, fy: 690, s: 1.05 },
+  { t: 210, fx: 235, fy: 480, s: 2.5 }, // 2006-2007 LaSizzle (top-left plate)
+  { t: 360, fx: 235, fy: 480, s: 2.5 },
+  { t: 430, fx: 235, fy: 868, s: 2.5 }, // 2022-2023 poop shoot (bottom-left filled plate)
+  { t: 580, fx: 235, fy: 868, s: 2.5 },
+  { t: 650, fx: 560, fy: 1090, s: 1.75 }, // the empty rows
+  { t: 770, fx: 560, fy: 1090, s: 1.75 },
+  { t: PLAQUE_DURATION, fx: 536, fy: 690, s: 1.02 },
+];
+
+function photoCam(frame: number) {
+  let a = PKFS[0];
+  let b = PKFS[PKFS.length - 1];
+  for (let i = 0; i < PKFS.length - 1; i++) {
+    if (frame >= PKFS[i].t && frame <= PKFS[i + 1].t) {
+      a = PKFS[i];
+      b = PKFS[i + 1];
+      break;
+    }
+  }
+  const span = Math.max(1, b.t - a.t);
+  const p = Easing.inOut(Easing.cubic)(Math.min(1, Math.max(0, (frame - a.t) / span)));
+  const lerp = (u: number, v: number) => u + (v - u) * p;
+  return { fx: lerp(a.fx, b.fx), fy: lerp(a.fy, b.fy), s: Math.exp(lerp(Math.log(a.s), Math.log(b.s))) };
+}
+
+/* Photo placed so the focus point sits at screen center, clamped so we never
+   show a gap on a side the image could cover. */
+const PlaquePhoto: React.FC<{ fx: number; fy: number; s: number; dim?: number; blur?: number }> = ({
+  fx,
+  fy,
+  s,
+  dim = 0,
+  blur = 0,
+}) => {
+  const ds = (1080 * s) / IMG_H; // display px per image px
+  const W = IMG_W * ds;
+  const H = IMG_H * ds;
+  let left = 960 - fx * ds;
+  let top = 540 - fy * ds;
+  left = W <= 1920 ? (1920 - W) / 2 : Math.min(0, Math.max(1920 - W, left));
+  top = H <= 1080 ? (540 - fy * ds < 1080 - H ? 1080 - H : Math.min(0, top)) : Math.min(0, Math.max(1080 - H, top));
+  if (H <= 1080) top = (1080 - H) / 2;
+  return (
+    <Img
+      src={staticFile("plaque.png")}
+      style={{
+        position: "absolute",
+        left,
+        top,
+        width: W,
+        height: H,
+        filter: `${blur ? `blur(${blur}px)` : ""} brightness(${1 - dim})`,
+        boxShadow: "0 40px 140px rgba(0,0,0,.85)",
+        borderRadius: 6,
+      }}
+    />
+  );
+};
 
 const serif: React.CSSProperties = {
   fontFamily: "Georgia, 'Times New Roman', serif",
@@ -31,128 +95,90 @@ const serif: React.CSSProperties = {
   textAlign: "center",
 };
 
-const spanFor = (year: number) => `${year}-${year + 1}`;
-
-/* The board itself, shared by the main scene and the finale.
-   Pass a huge frame to show it fully landed. */
-const Board: React.FC<{
-  frame: number;
-  fps: number;
-  highlightYear: number | null;
-  glowNext: boolean;
-  glowPhase: number;
-}> = ({ frame, fps, highlightYear, glowNext, glowPhase }) => {
-  const head = spring({ frame, fps, config: { damping: 13 } });
-  const nextS = glowNext ? 1 : 0;
-  const plates = CHAMPIONS.map((c, i) => {
-    const s = spring({
-      frame: frame - PLATE_IN_START - i * PLATE_STAGGER,
-      fps,
-      config: { damping: 12, stiffness: 150 },
-    });
-    const star = c.year === 2006 || c.year === 2022;
-    return { ...c, s, star, highlight: c.year === highlightYear };
+const Caption: React.FC<{ from: number; to: number; children: React.ReactNode }> = ({ from, to, children }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (frame < from || frame > to + 20) return null;
+  const s = spring({ frame: frame - from, fps, config: { damping: 13 } });
+  const out = interpolate(frame, [to - 15, to + 15], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
   });
   return (
     <div
       style={{
-        width: 1240,
-        padding: "38px 46px 46px",
-        borderRadius: 10,
-        background: `linear-gradient(170deg, #43301b, ${WOOD_DARK})`,
-        border: `3px solid ${CAROLINA}55`,
-        boxShadow: "0 40px 120px rgba(0,0,0,.7), inset 0 0 60px rgba(0,0,0,.55)",
+        position: "absolute",
+        bottom: 52,
+        width: "100%",
+        textAlign: "center",
+        ...serif,
+        fontSize: 32,
+        letterSpacing: 3,
+        color: WHITE,
+        opacity: s * out,
+        textShadow: "0 2px 26px #000, 0 2px 60px #000",
+        padding: "0 120px",
       }}
     >
-      <div style={{ ...serif, fontSize: 52, letterSpacing: 6, color: WHITE, opacity: head }}>
-        LEAGUE UNC
-      </div>
-      <div style={{ ...serif, fontSize: 26, letterSpacing: 10, color: WHITE, opacity: head, marginTop: 2 }}>
-        FANTASY FOOTBALL
-      </div>
-      <div
-        style={{
-          ...serif,
-          fontSize: 44,
-          letterSpacing: 14,
-          color: WOOD_DARK,
-          background: CAROLINA,
-          margin: "16px -46px 26px",
-          padding: "8px 0",
-          opacity: head,
-        }}
-      >
-        CHAMPIONS CLUB
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px 14px" }}>
-        {plates.map((p) => (
-          <div
-            key={p.year}
-            style={{
-              height: 86,
-              borderRadius: 4,
-              padding: "10px 8px 0",
-              background: p.highlight
-                ? "linear-gradient(160deg, #ffe9a8, #e8c15a 55%, #c9a23e)"
-                : "linear-gradient(160deg, #e6d193, #cdb26a 60%, #b39950)",
-              border: `1px solid ${p.highlight ? "#fff3c4" : "#8a723f"}`,
-              boxShadow: p.highlight ? "0 0 46px rgba(232,193,90,.85)" : "0 3px 8px rgba(0,0,0,.5)",
-              opacity: p.s,
-              transform: `scale(${0.7 + p.s * 0.3})`,
-            }}
-          >
-            <div style={{ ...serif, fontSize: 19, color: "#241a0c", lineHeight: 1.15 }}>
-              {p.star ? "* " : ""}
-              {p.manager.toUpperCase()}
-            </div>
-            <div
-              style={{
-                ...serif,
-                fontSize: p.team.length > 22 ? 13 : 16,
-                color: "#241a0c",
-                lineHeight: 1.15,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-              }}
-            >
-              {p.team}
-            </div>
-            <div style={{ ...serif, fontSize: 15, color: "#3a2c14" }}>{spanFor(p.year)}</div>
-          </div>
-        ))}
-        {[0, 1, 2, 3].map((i) => (
-          <div
-            key={`empty-${i}`}
-            style={{
-              height: 86,
-              borderRadius: 4,
-              border: `1px solid ${CAROLINA}44`,
-              background: "rgba(0,0,0,.25)",
-              boxShadow:
-                i === 0 && glowNext
-                  ? `0 0 ${30 + 14 * Math.sin(glowPhase / 6)}px ${CAROLINA}aa`
-                  : "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {i === 0 && glowNext && (
-              <div style={{ ...serif, fontSize: 22, color: CAROLINA, opacity: nextS }}>
-                2026-2027 · ?
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {children}
     </div>
   );
 };
 
-/* finale mode: board already fully populated, slow push-in, then START THE DRAFT */
-export const PLAQUE_FINALE_DURATION = 280;
+export const Plaque: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const cam = photoCam(frame);
+  const reveal = interpolate(frame, [0, 30], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const head = spring({ frame: frame - 10, fps, config: { damping: 13 } });
+  return (
+    <AbsoluteFill style={{ background: BG }}>
+      <div style={{ position: "absolute", inset: 0, opacity: reveal }}>
+        <PlaquePhoto fx={cam.fx} fy={cam.fy} s={cam.s} />
+      </div>
+      {/* vignette */}
+      <AbsoluteFill
+        style={{
+          background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+      {frame < 145 && (
+        <div
+          style={{
+            position: "absolute",
+            top: 46,
+            width: "100%",
+            textAlign: "center",
+            ...serif,
+            fontSize: 40,
+            letterSpacing: 12,
+            color: CAROLINA,
+            opacity: head * interpolate(frame, [120, 145], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+            textShadow: "0 2px 26px #000",
+          }}
+        >
+          THE PLAQUE DOESN'T LIE.
+        </div>
+      )}
+      <Caption from={230} to={415}>
+        * 2006 — THE AUTOPILOT: LESESNE SKIPPED THE DRAFT. AUTOPICK HANDED HIM LT &amp; BREES.
+        <br />
+        HE WON THE WHOLE THING.
+      </Caption>
+      <Caption from={450} to={635}>
+        * 2022 — THE CONCESSION: UP BY LESS THAN A POINT WHEN THE HAMLIN GAME WAS SUSPENDED,
+        <br />
+        SINGER HANDED KEVIN THE RING.
+      </Caption>
+      <Caption from={670} to={800}>
+        <span style={{ color: CAROLINA, fontSize: 38 }}>ONE PLATE GETS ENGRAVED THIS YEAR.</span>
+      </Caption>
+    </AbsoluteFill>
+  );
+};
 
+/* Finale: the real board, dimmed — START THE DRAFT. */
 export const PlaqueFinale: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -165,21 +191,14 @@ export const PlaqueFinale: React.FC = () => {
     extrapolateRight: "clamp",
   });
   return (
-    <AbsoluteFill
-      style={{
-        background: `radial-gradient(ellipse at 50% 30%, ${WOOD} 0%, ${WOOD_DARK} 75%, #17100a 100%)`,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <div style={{ transform: `scale(${push})`, opacity: 0.55, filter: "blur(1px)" }}>
-        <Board frame={9999} fps={fps} highlightYear={null} glowNext glowPhase={frame} />
-      </div>
+    <AbsoluteFill style={{ background: BG }}>
+      <PlaquePhoto fx={536} fy={690} s={push} dim={0.45} blur={2} />
       {frame >= 55 && (
         <div
           style={{
             position: "absolute",
             width: "100%",
+            top: "32%",
             textAlign: "center",
             ...serif,
             fontWeight: 900,
@@ -196,110 +215,6 @@ export const PlaqueFinale: React.FC = () => {
         </div>
       )}
       <AbsoluteFill style={{ background: "#fff", opacity: flash, pointerEvents: "none" }} />
-    </AbsoluteFill>
-  );
-};
-
-export const Plaque: React.FC = () => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const head = spring({ frame, fps, config: { damping: 13 } });
-  const drift = interpolate(frame, [0, PLAQUE_DURATION], [1.0, 1.06]);
-  const autopilot = frame >= AUTOPILOT_AT && frame < CONCESSION_AT;
-  const concession = frame >= CONCESSION_AT;
-  const autoS = spring({ frame: frame - AUTOPILOT_AT, fps, config: { damping: 13 } });
-  const conS = spring({ frame: frame - CONCESSION_AT, fps, config: { damping: 13 } });
-  const highlightYear = autopilot ? 2006 : concession && frame < NEXT_AT + 40 ? 2022 : null;
-
-  return (
-    <AbsoluteFill
-      style={{
-        background: `radial-gradient(ellipse at 50% 30%, ${WOOD} 0%, ${WOOD_DARK} 75%, #17100a 100%)`,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <div style={{ transform: `scale(${drift})` }}>
-        <Board
-          frame={frame}
-          fps={fps}
-          highlightYear={highlightYear}
-          glowNext={frame >= NEXT_AT}
-          glowPhase={frame}
-        />
-      </div>
-
-      {/* autopilot caption */}
-      {autopilot && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 46,
-            width: "100%",
-            textAlign: "center",
-            ...serif,
-            fontSize: 30,
-            letterSpacing: 3,
-            color: WHITE,
-            opacity:
-              autoS *
-              interpolate(frame, [CONCESSION_AT - 20, CONCESSION_AT - 2], [1, 0], {
-                extrapolateLeft: "clamp",
-                extrapolateRight: "clamp",
-              }),
-            textShadow: "0 2px 20px #000",
-          }}
-        >
-          * 2006 — THE AUTOPILOT: LESESNE SKIPPED THE DRAFT. AUTOPICK TOOK LT &amp; BREES.
-          <br />
-          HE WON THE WHOLE THING.
-        </div>
-      )}
-
-      {/* concession caption */}
-      {concession && frame < NEXT_AT + 40 && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 46,
-            width: "100%",
-            textAlign: "center",
-            ...serif,
-            fontSize: 30,
-            letterSpacing: 3,
-            color: WHITE,
-            opacity:
-              conS *
-              interpolate(frame, [NEXT_AT - 20, NEXT_AT + 20], [1, 0], {
-                extrapolateLeft: "clamp",
-                extrapolateRight: "clamp",
-              }),
-            textShadow: "0 2px 20px #000",
-          }}
-        >
-          * 2022 — THE CONCESSION: UP BY LESS THAN A POINT WHEN THE HAMLIN GAME WAS SUSPENDED,
-          <br />
-          SINGER HANDED KEVIN THE RING.
-        </div>
-      )}
-      {frame >= NEXT_AT + 50 && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 46,
-            width: "100%",
-            textAlign: "center",
-            ...serif,
-            fontSize: 34,
-            letterSpacing: 5,
-            color: CAROLINA,
-            opacity: spring({ frame: frame - NEXT_AT - 50, fps, config: { damping: 13 } }),
-            textShadow: "0 2px 20px #000",
-          }}
-        >
-          ONE PLATE GETS ENGRAVED THIS YEAR.
-        </div>
-      )}
     </AbsoluteFill>
   );
 };
