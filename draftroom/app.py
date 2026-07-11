@@ -34,9 +34,13 @@ DEFAULTS = {
     "roster_size": 16,
     "min_bid": 1,
     "timer_seconds": 30,
+    "season": 2026,
 }
 
 SLEEPER_PLAYERS = "https://api.sleeper.app/v1/players/nfl"
+SLEEPER_ADP = ("https://api.sleeper.com/projections/nfl/{season}?season_type=regular"
+               "&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K"
+               "&position[]=DEF&order_by=adp_std")
 
 _local = threading.local()
 
@@ -48,7 +52,7 @@ CREATE TABLE IF NOT EXISTS teams (
 CREATE TABLE IF NOT EXISTS pool (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL, norm TEXT NOT NULL,
-    position TEXT, nfl_team TEXT, bye INTEGER,
+    position TEXT, nfl_team TEXT, bye INTEGER, adp REAL,
     UNIQUE(norm, position)
 );
 CREATE TABLE IF NOT EXISTS picks (
@@ -70,6 +74,10 @@ def connect():
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
+        try:
+            conn.execute("ALTER TABLE pool ADD COLUMN adp REAL")
+        except sqlite3.OperationalError:
+            pass
         if conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 0:
             conn.executemany("INSERT INTO teams (id, name, budget) VALUES (?,?,?)",
                              [(i, f"Team {i}", DEFAULTS["budget"]) for i in range(1, 11)])
@@ -141,6 +149,31 @@ def team_states():
     return teams, rows
 
 
+def _dashboard(rows):
+    """Best available by position (ADP order), position run counts, money."""
+    conn = connect()
+    drafted_ids = {r["pool_id"] for r in rows}
+    best, remaining_ranked = {}, {}
+    for pos in ("QB", "RB", "WR", "TE", "K", "DST"):
+        ranked = conn.execute(
+            "SELECT * FROM pool WHERE position=? AND adp IS NOT NULL ORDER BY adp",
+            (pos,)).fetchall()
+        avail = [p for p in ranked if p["id"] not in drafted_ids]
+        remaining_ranked[pos] = len(avail)
+        best[pos] = [{"name": p["name"], "nfl": p["nfl_team"], "adp": round(p["adp"], 1)}
+                     for p in avail[:4]]
+    drafted_pos = {}
+    for r in rows:
+        drafted_pos[r["pos"] or "?"] = drafted_pos.get(r["pos"] or "?", 0) + 1
+    prices = [r["price"] for r in rows if not r["is_keeper"]]
+    money = {"spent": sum(r["price"] for r in rows),
+             "avg": round(sum(prices) / len(prices), 1) if prices else 0,
+             "top": max(prices) if prices else 0}
+    has_adp = conn.execute("SELECT COUNT(*) FROM pool WHERE adp IS NOT NULL").fetchone()[0]
+    return {"best_available": best, "remaining_ranked": remaining_ranked,
+            "drafted_pos": drafted_pos, "money": money, "has_adp": has_adp > 0}
+
+
 def board():
     teams, rows = team_states()
     order = meta_get("nom_order") or [t for t in teams]
@@ -167,6 +200,7 @@ def board():
         "timer_seconds": setting("timer_seconds"),
         "last_pick_ts": rows[-1]["ts"] if rows else None,
         "pool_size": connect().execute("SELECT COUNT(*) FROM pool").fetchone()[0],
+        **_dashboard(rows),
     }
 
 
@@ -273,7 +307,7 @@ def api_setup(q, body):
         conn.execute("UPDATE teams SET name=?, budget=? WHERE id=?",
                      (t["name"], int(t.get("budget") or DEFAULTS["budget"]), int(t["id"])))
     conn.commit()
-    for k in ("budget", "roster_size", "min_bid", "timer_seconds"):
+    for k in ("budget", "roster_size", "min_bid", "timer_seconds", "season"):
         if body.get(k) is not None:
             meta_set(f"s_{k}", int(body[k]))
     if body.get("new_pin"):
@@ -308,11 +342,25 @@ def api_pool_refresh(q, body):
     req = urllib.request.Request(SLEEPER_PLAYERS, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         players = json.loads(resp.read().decode())
-    return {"ok": True, "loaded": load_pool_from_sleeper(players)}
+    adp_entries, adp_note = [], ""
+    try:
+        req2 = urllib.request.Request(SLEEPER_ADP.format(season=setting("season")),
+                                      headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req2, timeout=60) as resp:
+            adp_entries = json.loads(resp.read().decode())
+    except Exception as e:  # noqa: BLE001 — ADP is a bonus, not a blocker
+        adp_note = f"ADP fetch failed ({e}) — paste an ESPN ADP CSV instead"
+    return {"ok": True, "loaded": load_pool_from_sleeper(players, adp_entries),
+            "adp_note": adp_note}
 
 
-def load_pool_from_sleeper(players):
-    """Fantasy-relevant names only — no values, no projections."""
+def load_pool_from_sleeper(players, adp_entries=None):
+    """Fantasy-relevant names + ADP only — no values, no projections."""
+    adp_map = {}
+    for e in adp_entries or []:
+        adp = (e.get("stats") or {}).get("adp_std") or (e.get("stats") or {}).get("adp_ppr")
+        if adp:
+            adp_map[str(e.get("player_id"))] = adp
     conn = connect()
     n = 0
     for pid, p in players.items():
@@ -327,8 +375,14 @@ def load_pool_from_sleeper(players):
         name = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
         if not name:
             continue
-        conn.execute("INSERT OR IGNORE INTO pool (name, norm, position, nfl_team) VALUES (?,?,?,?)",
-                     (name, norm_name(name), pos, p.get("team")))
+        adp = adp_map.get(str(pid))
+        cur = conn.execute(
+            "UPDATE pool SET nfl_team=?, adp=COALESCE(?, adp) WHERE norm=? AND "
+            "(position=? OR position IS NULL)",
+            (p.get("team"), adp, norm_name(name), pos))
+        if cur.rowcount == 0:
+            conn.execute("INSERT OR IGNORE INTO pool (name, norm, position, nfl_team, adp) "
+                         "VALUES (?,?,?,?,?)", (name, norm_name(name), pos, p.get("team"), adp))
         n += 1
     conn.commit()
     return n
@@ -344,6 +398,7 @@ def api_pool_import(q, body):
     name_c = next((cols[k] for k in ("player", "name", "player name") if k in cols), None)
     pos_c = next((cols[k] for k in ("pos", "position") if k in cols), None)
     nfl_c = next((cols[k] for k in ("team", "nfl", "nfl team") if k in cols), None)
+    adp_c = next((cols[k] for k in ("adp", "avg pick", "avg. pick", "rk", "rank", "overall") if k in cols), None)
     if not name_c:
         return {"error": "need a Player/Name column"}
     conn = connect()
@@ -353,9 +408,20 @@ def api_pool_import(q, body):
         if not name:
             continue
         pos = re.sub(r"\d+$", "", (row.get(pos_c) or "").strip().upper()) if pos_c else None
-        conn.execute("INSERT OR IGNORE INTO pool (name, norm, position, nfl_team) VALUES (?,?,?,?)",
-                     (name, norm_name(name), pos or None,
-                      (row.get(nfl_c) or "").strip().upper() or None if nfl_c else None))
+        pos = "DST" if pos in ("DEF", "D/ST") else pos
+        adp = None
+        if adp_c:
+            try:
+                adp = float(str(row.get(adp_c)).replace(",", "").strip())
+            except (TypeError, ValueError):
+                pass
+        cur = conn.execute("UPDATE pool SET adp=COALESCE(?, adp) WHERE norm=?",
+                           (adp, norm_name(name)))
+        if cur.rowcount == 0:
+            conn.execute("INSERT OR IGNORE INTO pool (name, norm, position, nfl_team, adp) "
+                         "VALUES (?,?,?,?,?)",
+                         (name, norm_name(name), pos or None,
+                          ((row.get(nfl_c) or "").strip().upper() or None) if nfl_c else None, adp))
         n += 1
     conn.commit()
     return {"ok": True, "loaded": n}

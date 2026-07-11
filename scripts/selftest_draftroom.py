@@ -100,6 +100,24 @@ check("keeper logged", s == 200, str(r))
 r, s = call("GET", "/api/board")
 check("keeper does not advance nominator", r["nominating"] == nom_before)
 
+# --- ADP + best-available dashboard -----------------------------------------------------
+# pool positions cycle QB RB WR TE K DST by i%6: Player 1=RB, 7=RB, 13=RB; 2/8/14=WR
+adp_csv = ("Player,ADP\n"
+           "Player 1,5.0\nPlayer 7,11.0\nPlayer 13,20.0\n"
+           "Player 2,1.5\nPlayer 8,3.2\nPlayer 14,9.9\n")
+r, s = call("POST", "/api/pool/import", {"pin": PIN, "text": adp_csv})
+check("ADP CSV updates existing pool rows", s == 200, str(r))
+r, s = call("GET", "/api/board")
+check("dashboard has ADP", r["has_adp"] is True)
+# Player 1 (RB, drafted) -> next best RB is Player 7; Player 2 (WR, drafted) -> Player 8
+check("best available RB skips drafted", r["best_available"]["RB"][0]["name"] == "Player 7",
+      str(r["best_available"]["RB"][:2]))
+check("best available WR skips drafted", r["best_available"]["WR"][0]["name"] == "Player 8",
+      str(r["best_available"]["WR"][:2]))
+check("remaining/drafted counts", r["remaining_ranked"]["RB"] == 2 and r["drafted_pos"].get("RB", 0) >= 1,
+      str((r["remaining_ranked"], r["drafted_pos"])))
+check("money stats", r["money"]["spent"] > 0 and r["money"]["top"] >= 445, str(r["money"]))
+
 # --- sync + exports ------------------------------------------------------------------
 r, s = call("GET", "/api/sync")
 check("sync feed", s == 200 and len(r["sales"]) == 3 and

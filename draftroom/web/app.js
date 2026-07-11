@@ -207,28 +207,112 @@ function renderTeam(tid) {
       <span style="flex:1">${esc(p.name)}${p.keeper ? ' <span class="dim">[keeper]</span>' : ""}</span>
       <b class="money">$${p.price}</b></div>`).join("") || '<div class="note">Empty.</div>'}
   </div>
+  <div class="panel"><h2>Next best by position</h2>${bestAvailableGrid(true)}</div>
   <div class="panel"><h2>Budgets</h2>${budgetsGrid(tid)}</div>
   <div class="panel"><h2>Recent sales</h2>${recentList(8)}</div>`;
 }
 
-function renderTV() {
-  const last = S.board.recent[0];
-  const secs = S.board.last_pick_ts
-    ? Math.max(0, S.board.timer_seconds - Math.floor(Date.now() / 1000 - S.board.last_pick_ts))
-    : S.board.timer_seconds;
-  $("#app").innerHTML = `
-  <div class="tv">
-    <div class="note" style="text-align:right"><a href="#home" style="color:var(--muted)">exit</a></div>
-    <div class="nominating">🎤 ${esc(S.board.nominating || "Draft Room")} ${S.board.on_deck ? `<span class="dim" style="font-size:2vw">on deck: ${esc(S.board.on_deck)}</span>` : ""}</div>
-    ${last ? `<div class="lastsale">🔨 ${esc(last.name)} → ${esc(last.team)} for $${last.price}</div>` : ""}
-    <div class="timer ${secs <= 10 ? "low" : ""}">${secs}s</div>
-    <div class="panel"><h2>Budgets</h2>${budgetsGrid()}</div>
-    <div class="ticker">
-      ${S.board.picks_made}/${S.board.picks_total} picks
-      ${S.board.pace ? ` · ${S.board.pace.avg_seconds}s/pick · ~${S.board.pace.eta_minutes} min remaining` : ""}
-      · recent: ${S.board.recent.slice(0, 5).map(r => `${esc(r.name)} $${r.price}`).join("  •  ")}
+function bestAvailableGrid(compact) {
+  const b = S.board;
+  if (!b.has_adp) {
+    return `<div class="note">Load ADP in Setup (Sleeper button or paste ESPN ADP CSV) to show best available by position.</div>`;
+  }
+  const positions = compact ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K", "DST"];
+  return `<div class="bagrid">` + positions.map(pos => {
+    const list = b.best_available[pos] || [];
+    return `<div class="bacol">
+      <div class="bahead"><span class="pos pos-${pos}">${pos}</span>
+        <span class="dim">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>
+      ${list.map((p, i) => `<div class="barow ${i === 0 ? "top" : ""}" title="${esc(p.name)}">
+        <span class="banm">${esc(shortName(p.name))}</span><span class="bameta">${esc(p.nfl || "")} ${p.adp}</span>
+      </div>`).join("") || '<div class="note">none ranked left</div>'}
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+function shortName(n) {
+  const parts = (n || "").split(" ");
+  return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : n;
+}
+
+function draftBoard() {
+  // The ESPN-style wall: one column per team, one row per roster slot,
+  // position-colored player cards with prices, budgets in the headers.
+  const b = S.board;
+  const rows = Math.max(...b.teams.map(t => t.roster.length), 8);
+  const size = b.teams[0] ? b.teams[0].roster.length + b.teams[0].slots_left : 16;
+  const nRows = Math.min(size, Math.max(rows + 1, 8));
+  let html = `<div class="board" style="grid-template-columns:repeat(${b.teams.length},1fr)">`;
+  for (const t of b.teams) {
+    html += `<div class="bcolhead ${b.nominating === t.name ? "nom" : ""}" data-focus="${t.id}" title="click to spotlight this team">
+      <div class="bteam">${esc(t.name)}${b.nominating === t.name ? " 🎤" : ""}</div>
+      <div class="bmoney">$${t.budget_left} <span class="dim">max $${t.max_bid}</span></div>
+    </div>`;
+  }
+  for (let r = 0; r < nRows; r++) {
+    for (const t of b.teams) {
+      const p = t.roster[r];
+      html += p
+        ? `<div class="cell pos-${p.position || "DST"}" title="${esc(p.name)}">
+             <span class="cnm">${esc(shortName(p.name))}${p.keeper ? "🔒" : ""}</span>
+             <span class="cpr">$${p.price}</span></div>`
+        : `<div class="cell empty"></div>`;
+    }
+  }
+  return html + `</div>`;
+}
+
+function teamSpotlight() {
+  const t = S.board.teams.find(x => x.id === S.tvFocus);
+  if (!t) return "";
+  return `
+  <div class="panel spotlight">
+    <h2>${esc(t.name)} — team spotlight
+      <button class="btn small" style="float:right" data-unfocus>✕ back to board</button></h2>
+    <div class="row" style="gap:20px;font-size:1.4vw">
+      <span>💰 <b class="money">$${t.budget_left}</b> left of $${t.budget}</span>
+      <span>max bid <b>$${t.max_bid}</b></span>
+      <span><b>${t.slots_left}</b> slots open</span>
+      <span>spent <b>$${t.spent}</b></span>
+    </div>
+    <div class="bagrid" style="margin-top:8px">
+      ${["QB", "RB", "WR", "TE", "K", "DST"].map(pos => {
+        const ps = t.roster.filter(p => p.position === pos);
+        return `<div class="bacol"><div class="bahead"><span class="pos pos-${pos}">${pos}</span>
+          <span class="dim">${ps.length}</span></div>
+          ${ps.map(p => `<div class="barow"><span class="banm">${esc(p.name)}${p.keeper ? " 🔒" : ""}</span>
+            <span class="money">$${p.price}</span></div>`).join("") || '<div class="note">—</div>'}</div>`;
+      }).join("")}
     </div>
   </div>`;
+}
+
+function renderTV() {
+  const b = S.board;
+  const last = b.recent[0];
+  const secs = b.last_pick_ts
+    ? Math.max(0, b.timer_seconds - Math.floor(Date.now() / 1000 - b.last_pick_ts))
+    : b.timer_seconds;
+  $("#app").innerHTML = `
+  <div class="tv">
+    <div class="tvhead">
+      <div class="nominating">🎤 ${esc(b.nominating || "Draft Room")}
+        ${b.on_deck ? `<span class="dim" style="font-size:1.4vw">on deck: ${esc(b.on_deck)}</span>` : ""}</div>
+      ${last ? `<div class="lastsale">🔨 ${esc(last.name)} → ${esc(last.team)} $${last.price}</div>` : ""}
+      <div class="timer ${secs <= 10 ? "low" : ""}">${secs}s</div>
+      <a href="#home" class="dim" style="font-size:12px">exit</a>
+    </div>
+    ${S.tvFocus ? teamSpotlight() : draftBoard()}
+    <div class="panel" style="margin-top:10px"><h2>Best available (market ADP)</h2>${bestAvailableGrid(false)}</div>
+    <div class="ticker">
+      ${b.picks_made}/${b.picks_total} picks · $${b.money.spent} spent · avg $${b.money.avg} · top $${b.money.top}
+      ${b.pace ? ` · ${b.pace.avg_seconds}s/pick · ~${b.pace.eta_minutes} min to finish` : ""}
+      · recent: ${b.recent.slice(0, 4).map(r => `${esc(shortName(r.name))} $${r.price}`).join(" • ")}
+    </div>
+  </div>`;
+  $$("[data-focus]").forEach(el => (el.onclick = () => { S.tvFocus = +el.dataset.focus; render(); }));
+  const uf = $("[data-unfocus]");
+  if (uf) uf.onclick = () => { S.tvFocus = null; render(); };
 }
 
 function renderSetup() {
@@ -244,13 +328,15 @@ function renderSetup() {
       </div>`).join("")}
     <div class="row">
       <label class="note">Timer (s) <input type="number" id="timer" value="${S.board.timer_seconds}" style="width:80px"></label>
+      <label class="note">Season <input type="number" id="season" value="2026" style="width:90px"></label>
       <label class="note">New PIN <input type="text" id="newpin" placeholder="unchanged" style="width:100px"></label>
       <button class="btn primary" id="save">Save setup</button>
     </div>
-    <h2 style="margin-top:12px">Player pool (${S.board.pool_size} loaded)</h2>
+    <h2 style="margin-top:12px">Player pool (${S.board.pool_size} loaded${S.board.has_adp ? ", ADP ✓" : ", no ADP yet"})</h2>
     <div class="row">
-      <button class="btn" id="poolBtn">Load NFL players (Sleeper, needs internet)</button>
-      <span class="note">or paste Player,Pos,Team CSV:</span>
+      <button class="btn" id="poolBtn">Load NFL players + ADP (Sleeper, needs internet)</button>
+      <span class="note">or paste CSV/TSV — columns like <b>Player, Pos, Team, ADP</b> (an ESPN ADP
+        export pasted straight from a spreadsheet works; ADP powers the best-available board):</span>
     </div>
     <textarea id="poolCsv" style="width:100%;min-height:80px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
     <div class="row"><button class="btn" id="poolImp">Import CSV</button></div>
@@ -270,6 +356,7 @@ function renderSetup() {
           id: t.id, name: $(`[data-nm="${t.id}"]`).value, budget: +$(`[data-bg="${t.id}"]`).value,
         })),
         timer_seconds: +$("#timer").value,
+        season: +$("#season").value || null,
         new_pin: $("#newpin").value || null,
       });
       toast("Setup saved");

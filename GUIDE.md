@@ -253,3 +253,15 @@ one for this laptop, one for managers' phones on the room's Wi-Fi.
 - Auto-backups every 10 picks in `draftroom/data/backups/`.
 
 Test: `python3 scripts/selftest_draftroom.py`
+
+### TV mode is the league dashboard
+
+The big screen shows the ESPN-style **draft board wall** (a column per team,
+position-colored player cards with prices, budget + max bid in every header),
+**best available by position from market ADP** (with X left / Y gone counts —
+answers "who's the next best RB?" without anyone touching a phone), the
+nomination/timer strip, and a money/pace ticker. **Click any team header to
+spotlight that team** — full roster by position with prices and remaining
+budget — then click back to the board. ADP loads with the Sleeper pool button
+or by pasting an ESPN ADP export (any CSV/TSV with Player + ADP columns) in
+Setup.
