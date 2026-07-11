@@ -1,7 +1,7 @@
 # 🏈 Auction Copilot — Fantasy Football 2026-27
 
 A fast, local draft-day and season-long copilot for a **10-team ESPN standard
-(non-PPR) auction league**: $500 budgets, 16 roster spots + IR, keepers
+(non-PPR) auction league**: $500 budgets, 15 roster spots + IR, keepers
 (max 2 per team, max 1 per position, cost = last year's price + $15), and a
 $200 season FAAB budget.
 

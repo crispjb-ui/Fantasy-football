@@ -93,7 +93,7 @@ check("third keeper rejected (max 2)", s == 400, str(r))
 r, s = call("GET", "/api/draft")
 team2 = next(t for t in r["teams"] if t["id"] == 2)
 check("keeper budget deducted", team2["budget_left"] == 500 - 70 - 55, f"left={team2['budget_left']}")
-check("keeper slots deducted", team2["slots_left"] == 14, f"slots={team2['slots_left']}")
+check("keeper slots deducted (15-spot roster)", team2["slots_left"] == 13, f"slots={team2['slots_left']}")
 infl0 = r["inflation"]
 check("inflation computed", 0.8 <= infl0 <= 1.6, f"inflation={infl0}")
 
@@ -112,7 +112,7 @@ check("player card marked drafted", r["drafted"] is True, str(r)[:150])
 r, s = call("GET", "/api/draft")
 me = next(t for t in r["teams"] if t["id"] == 1)
 check("my budget after $80 pick", me["budget_left"] == 420, f"left={me['budget_left']}")
-check("max bid = budget - open slots + 1", me["max_bid"] == 420 - 15 + 1, f"max={me['max_bid']}")
+check("max bid = budget - open slots + 1", me["max_bid"] == 420 - 14 + 1, f"max={me['max_bid']}")
 check("budget plan sums to budget", sum(x["suggested"] for x in r["budget_plan"]["slots"]) == 420,
       str(r["budget_plan"]))
 check("nominations present", len(r["nominations"]["suggestions"]) > 0)

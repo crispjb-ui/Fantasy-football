@@ -16,16 +16,16 @@ LEAGUE = {
     "keeper_surcharge": 15,
     "max_keepers_per_team": 2,
     "max_keepers_per_position": 1,
-    # Starting lineup (ESPN standard)
+    # Starting lineup: QB/RB/RB/WR/WR/TE/FLEX/DST/K (FLEX = RB/WR/TE)
     "starters": {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "DST": 1, "K": 1},
     "flex_positions": ["RB", "WR", "TE"],
-    "bench_spots": 7,
+    "bench_spots": 6,
     "ir_spots": 1,
-    # 9 starters + 7 bench = 16 auction-filled spots per team
-    "roster_size": 16,
-    # How the 7 bench spots are typically allocated per team in a 10-team
-    # standard league. Drives replacement-level (bench demand) per position.
-    "bench_allocation": {"QB": 0.7, "RB": 2.7, "WR": 2.7, "TE": 0.6, "K": 0.15, "DST": 0.15},
+    # 9 starters + 6 bench = 15 auction-filled spots per team
+    "roster_size": 15,
+    # How the 6 bench spots are typically allocated per team in a 10-team
+    # league. Drives replacement-level (bench demand) per position.
+    "bench_allocation": {"QB": 0.6, "RB": 2.4, "WR": 2.4, "TE": 0.4, "K": 0.1, "DST": 0.1},
     # Weight given to market AAV (vs. our projection model) in blended values.
     "market_blend": 0.35,
     # Point-gap thresholds that start a new tier within a position.

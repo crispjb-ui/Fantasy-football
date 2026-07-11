@@ -31,7 +31,7 @@ WEB_ROOT = os.path.join(BASE, "web")
 DEFAULTS = {
     "pin": "0000",          # scorekeeper PIN — change it in Setup!
     "budget": 500,
-    "roster_size": 16,
+    "roster_size": 15,      # QB/RB/RB/WR/WR/TE/FLEX/DST/K + 6 bench
     "min_bid": 1,
     "timer_seconds": 0,       # 0 = no auction clock (offline room, results-only entry)
     "season": 2026,
@@ -206,6 +206,7 @@ def board():
         "pace": pace,
         "timer_seconds": setting("timer_seconds"),
         "league_name": setting("league_name"),
+        "nom_order": order,
         "last_pick_ts": rows[-1]["ts"] if rows else None,
         "pool_size": connect().execute("SELECT COUNT(*) FROM pool").fetchone()[0],
         **_dashboard(rows),

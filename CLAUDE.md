@@ -9,7 +9,7 @@ reliability on any laptop).
 ## League rules (drive all the math — do not change casually)
 
 - 10 teams, ESPN **standard non-PPR** scoring, $500 auction budgets ($5,000 league-wide)
-- 16 roster spots (QB/RB/RB/WR/WR/TE/FLEX/DST/K + 7 bench) + 1 IR slot
+- 15 roster spots (QB/RB/RB/WR/WR/TE/FLEX/DST/K + 6 bench) + 1 IR slot
 - Keepers: max 2 per team, max **1 per position**, cost = last year's price + $15
 - $200 season-long FAAB waiver budget
 - The room historically **overpays elite players** (modeled as `elite_premium`)

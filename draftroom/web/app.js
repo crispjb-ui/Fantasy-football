@@ -206,6 +206,43 @@ function renderScore() {
   }));
 }
 
+/* League lineup sheet: slots in display order, filled in DRAFT order —
+   the FLEX is simply the overflow RB/WR/TE as drafted; extras hit the bench. */
+function slotify(roster, benchN) {
+  const open = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, DST: 1, K: 1 };
+  const filled = { QB: [], RB: [], WR: [], TE: [], FLEX: [], DST: [], K: [] };
+  const bench = [];
+  for (const p of roster) {                    // roster arrives chronologically
+    const pos = p.position;
+    if (open[pos] > 0) { open[pos]--; filled[pos].push(p); }
+    else if (["RB", "WR", "TE"].includes(pos) && open.FLEX > 0) { open.FLEX--; filled.FLEX.push(p); }
+    else bench.push(p);
+  }
+  const rows = [];
+  for (const [slot, n] of [["QB", 1], ["RB", 2], ["WR", 2], ["TE", 1], ["FLEX", 1], ["DST", 1], ["K", 1]]) {
+    for (let i = 0; i < n; i++) rows.push({ slot, player: filled[slot][i] || null });
+  }
+  const benchRows = [];
+  for (let i = 0; i < Math.max(benchN, bench.length); i++) {
+    benchRows.push({ slot: "BE", player: bench[i] || null });
+  }
+  return { rows, benchRows };
+}
+
+function lineupSheet(t) {
+  const size = t.roster.length + t.slots_left;
+  const { rows, benchRows } = slotify(t.roster, Math.max(0, size - 9));
+  const row = r => `
+    <div class="result" style="${r.player ? "" : "opacity:.45"}">
+      <span class="pos pos-${r.player ? (r.player.position || "DST") : ""}" style="min-width:44px">${r.slot}</span>
+      <span style="flex:1">${r.player ? esc(r.player.name) + (r.player.keeper ? ' <span class="dim">[keeper]</span>' : "") : '<span class="dim">—</span>'}</span>
+      ${r.player ? `<b class="money">$${r.player.price}</b>` : ""}
+    </div>`;
+  return rows.map(row).join("") +
+    `<div style="border-top:2px solid var(--border);margin:8px 0"></div>` +
+    benchRows.map(row).join("");
+}
+
 function renderTeam(tid) {
   const t = S.board.teams.find(x => x.id === tid) || S.board.teams[0];
   $("#app").innerHTML = `
@@ -214,10 +251,8 @@ function renderTeam(tid) {
     <div style="font-size:30px;font-weight:800" class="money">$${t.budget_left}</div>
     <div class="note">max bid $${t.max_bid} · ${t.slots_left} roster spots left · ${S.board.picks_made}/${S.board.picks_total} picks league-wide</div>
   </div>
-  <div class="panel"><h2>My roster (${t.roster.length})</h2>
-    ${t.roster.map(p => `<div class="result"><span class="pos pos-${p.position || "DST"}">${p.position || "?"}</span>
-      <span style="flex:1">${esc(p.name)}${p.keeper ? ' <span class="dim">[keeper]</span>' : ""}</span>
-      <b class="money">$${p.price}</b></div>`).join("") || '<div class="note">Empty.</div>'}
+  <div class="panel"><h2>My lineup (${t.roster.length}/${t.roster.length + t.slots_left})</h2>
+    ${lineupSheet(t)}
   </div>
   <div class="panel"><h2>Next best by position</h2>${bestAvailableGrid(true)}</div>
   <div class="panel"><h2>Budgets</h2>${budgetsGrid(tid)}</div>
@@ -295,15 +330,7 @@ function teamSpotlight() {
       <span><b>${t.slots_left}</b> slots open</span>
       <span>spent <b>$${t.spent}</b></span>
     </div>
-    <div class="bagrid" style="margin-top:8px">
-      ${["QB", "RB", "WR", "TE", "K", "DST"].map(pos => {
-        const ps = t.roster.filter(p => p.position === pos);
-        return `<div class="bacol"><div class="bahead"><span class="pos pos-${pos}">${pos}</span>
-          <span class="dim">${ps.length}</span></div>
-          ${ps.map(p => `<div class="barow"><span class="banm">${esc(p.name)}${p.keeper ? " 🔒" : ""}</span>
-            <span class="money">$${p.price}</span></div>`).join("") || '<div class="note">—</div>'}</div>`;
-      }).join("")}
-    </div>
+    <div style="margin-top:8px;columns:2;column-gap:14px">${lineupSheet(t)}</div>
   </div>`;
 }
 
@@ -342,8 +369,13 @@ function renderSetup() {
     <h2>Setup <a href="#home" style="float:right;color:var(--muted)">home</a></h2>
     <div class="row"><input type="password" id="pin" placeholder="PIN (default 0000)" value="${esc(S.pin)}" style="width:150px"></div>
     <h2 style="margin-top:12px">Teams & budgets</h2>
+    <div class="row"><span class="note" style="width:60px">Nom. #</span>
+      <span class="note" style="flex:1">Team</span><span class="note" style="width:90px">Budget</span></div>
     ${S.board.teams.map(t => `
       <div class="row">
+        <input type="number" value="${(S.board.nom_order || []).indexOf(t.id) + 1 || t.id}"
+               data-ord="${t.id}" min="1" max="${S.board.teams.length}" style="width:60px"
+               title="nomination order — edit the numbers and Save reorders the rotation">
         <input type="text" value="${esc(t.name)}" data-nm="${t.id}" style="flex:1">
         <input type="number" value="${t.budget}" data-bg="${t.id}" style="width:90px">
       </div>`).join("")}
@@ -379,8 +411,13 @@ function renderSetup() {
   $("#pin").onchange = e => { S.pin = e.target.value; localStorage.dr_pin = S.pin; };
   $("#save").onclick = async () => {
     try {
+      const nomOrder = S.board.teams
+        .map(t => ({ id: t.id, ord: +$(`[data-ord="${t.id}"]`).value || t.id }))
+        .sort((a, b) => a.ord - b.ord || a.id - b.id)
+        .map(x => x.id);
       await api("/api/setup", {
         pin: $("#pin").value,
+        nom_order: nomOrder,
         teams: S.board.teams.map(t => ({
           id: t.id, name: $(`[data-nm="${t.id}"]`).value, budget: +$(`[data-bg="${t.id}"]`).value,
         })),

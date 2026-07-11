@@ -161,16 +161,21 @@ def _apply_market_temperament(pool, cfg, total_money, total_slots):
 
 # --- live draft state -------------------------------------------------------
 
-def _assign_roster_slots(roster_players, cfg):
-    """Greedily fill starter slots with a team's players (best points first).
+def _assign_roster_slots(roster_players, cfg, order="points"):
+    """Fill starter slots with a team's players.
 
+    order="points": best players start (correct for lineup-value math).
+    order="draft": slots fill in draft order (the league's display
+    convention — the FLEX is simply the overflow RB/WR/TE as drafted).
     Returns (slot assignments, open starter slot counts).
     """
     starters = dict(cfg["starters"])
     open_slots = dict(starters)
     assignments = []
     bench = []
-    for p in sorted(roster_players, key=lambda x: x.get("points", 0), reverse=True):
+    ordered = (roster_players if order == "draft"
+               else sorted(roster_players, key=lambda x: x.get("points", 0), reverse=True))
+    for p in ordered:
         pos = p["position"]
         if open_slots.get(pos, 0) > 0:
             open_slots[pos] -= 1
@@ -219,7 +224,7 @@ def draft_state(valued_pool, picks, teams, cfg):
         ts["slots_left"] = slots_left
         ts["budget_left"] = ts["budget_start"] - ts["spent"]
         ts["max_bid"] = max(0, ts["budget_left"] - (slots_left - 1)) if slots_left > 0 else 0
-        assignments, open_slots = _assign_roster_slots(ts["players"], cfg)
+        assignments, open_slots = _assign_roster_slots(ts["players"], cfg, order="draft")
         ts["roster"] = assignments
         ts["open_starters"] = open_slots
         total_remaining_slots += slots_left
