@@ -10,8 +10,8 @@ import {
   useVideoConfig,
 } from "remotion";
 import { MapCountdown, MAP_EMBED_DURATION } from "./MapCountdown";
-import { Plaque, PLAQUE_DURATION } from "./Plaque";
-import { NAME_HISTORY } from "./data";
+import { Plaque, PLAQUE_DURATION, PlaqueFinale, PLAQUE_FINALE_DURATION } from "./Plaque";
+import { ALL_TIME, NAME_HISTORY } from "./data";
 
 /* The full 20th-anniversary film, UNC palette throughout. */
 
@@ -28,14 +28,18 @@ const OPEN_LEN = 150;
 const FACE_NAMES = NAME_HISTORY.Farmer; // the whole saga, 2007 -> Allen Face One
 const FACE_LEN = 90 + FACE_NAMES.length * 13 + 90;
 const STAKES_LEN = 130;
-const CLOSER_LEN = 300;
+const CLOSER_LEN = 240;
+const PER_TICK = 32; // frames per number in the final 10..1 countdown
+const TICKS_LEN = 60 + 10 * PER_TICK;
 
 const T_MAP = OPEN_LEN;
 const T_PLAQUE = T_MAP + MAP_EMBED_DURATION;
 const T_FACE = T_PLAQUE + PLAQUE_DURATION;
 const T_STAKES = T_FACE + FACE_LEN;
 const T_CLOSER = T_STAKES + STAKES_LEN;
-export const FILM_DURATION = T_CLOSER + CLOSER_LEN;
+const T_TICKS = T_CLOSER + CLOSER_LEN;
+const T_FINALE = T_TICKS + TICKS_LEN;
+export const FILM_DURATION = T_FINALE + PLAQUE_FINALE_DURATION;
 
 const font: React.CSSProperties = {
   fontFamily: "Arial, 'DejaVu Sans', sans-serif",
@@ -198,6 +202,75 @@ const Closer: React.FC = () => {
       <div style={{ ...font, fontSize: 52, letterSpacing: 8, opacity: s3, marginTop: 36 }}>
         SOMEBODY'S GOTTA PAY.
       </div>
+      <div style={{ ...font, fontSize: 30, letterSpacing: 12, opacity: s3, marginTop: 26, color: CAROLINA_LIGHT }}>
+        AUGUST 29 · THE CHAMP'S HOUSE · WASHINGTON, DC
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/* Scene 7 — the final countdown: 10..1, each number wearing a team's logo,
+   in all-time order so 1 lands on the defending champ. */
+const FinalCountdown: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const head = spring({ frame, fps, config: { damping: 13 } });
+  const START = 60;
+  if (frame < START) {
+    return (
+      <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+        <div style={{ ...font, fontSize: 60, letterSpacing: 18, color: CAROLINA_LIGHT, opacity: head }}>
+          THE 20TH AUCTION BEGINS IN…
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  const idx = Math.min(Math.floor((frame - START) / PER_TICK), 9); // 0..9 -> numbers 10..1
+  const num = 10 - idx;
+  const row = ALL_TIME[num - 1]; // all-time rank == displayed number
+  const local = (frame - START) % PER_TICK;
+  const s = spring({ frame: local, fps, config: { damping: 9, stiffness: 210 } });
+  const isOne = num === 1;
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <Img
+        src={staticFile(`logos/${row.key.toLowerCase()}.png`)}
+        style={{
+          position: "absolute",
+          width: 560,
+          height: 560,
+          borderRadius: "50%",
+          opacity: 0.16,
+          filter: "saturate(1.2)",
+        }}
+      />
+      <div
+        style={{
+          ...font,
+          fontSize: 560,
+          lineHeight: 1,
+          color: isOne ? CAROLINA_LIGHT : WHITE,
+          transform: `scale(${0.6 + s * 0.4})`,
+          opacity: Math.min(1, s * 1.5),
+          textShadow: `0 0 140px ${isOne ? CAROLINA : "#000"}aa`,
+        }}
+      >
+        {num}
+      </div>
+      <div
+        style={{
+          ...font,
+          position: "absolute",
+          bottom: 90,
+          width: "100%",
+          fontSize: 34,
+          letterSpacing: 8,
+          color: CAROLINA_LIGHT,
+          opacity: s,
+        }}
+      >
+        {row.manager.toUpperCase()} · ALL-TIME #{num}
+      </div>
     </AbsoluteFill>
   );
 };
@@ -223,6 +296,12 @@ export const Film: React.FC = () => (
     </Sequence>
     <Sequence from={T_CLOSER} durationInFrames={CLOSER_LEN}>
       <Closer />
+    </Sequence>
+    <Sequence from={T_TICKS} durationInFrames={TICKS_LEN}>
+      <FinalCountdown />
+    </Sequence>
+    <Sequence from={T_FINALE} durationInFrames={PLAQUE_FINALE_DURATION}>
+      <PlaqueFinale />
     </Sequence>
   </AbsoluteFill>
 );

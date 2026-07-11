@@ -55,6 +55,17 @@ Everything Brett has specified so far. Production waits until he gives the go
    2023, 2025), each under a different Face name.
 6. Closer — Draft Night 2026, 20th anniversary.
 
+## Draft night 2026
+
+- **August 29, 2026, at James Farmer's house in Washington, DC.** League
+  tradition: the reigning champion picks the venue for the next draft — so the
+  defending champ (Allen Face One) hosts the 20th-anniversary auction. Closer
+  reads "AUGUST 29 · THE CHAMP'S HOUSE · WASHINGTON, DC".
+- Ending sequence: DRAFT NIGHT 2026 → 10-to-1 countdown (each number carries a
+  team logo in all-time-rank order, #1 = Farmer) → plaque reprise, empty
+  2026-2027 plate glowing → "START THE DRAFT." The video is designed to be
+  played in the room and hard-cut straight into nominations.
+
 ## Assets
 
 - `public/logos/{crisp,link,kevin,farmer,lesesne,rob,singer,ned,omar,byrd}.png`
