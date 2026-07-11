@@ -166,6 +166,8 @@ def apply_league_payload(data):
         overrides["playoff_teams"] = sched_settings["playoffTeamCount"]
     db.meta_set("config_overrides", overrides)
 
+    my_local = db.my_team_id()
+    marked_me = next((t["name"] for t in team_list if t["local_id"] == my_local), None)
     return {
         "teams": team_list,
         "rostered": len(roster_rows),
@@ -173,6 +175,8 @@ def apply_league_payload(data):
         "faab_spent": faab_spent,
         "records": records,
         "schedule_weeks": len(league_sched),
+        "marked_me": marked_me,
+        "my_espn_team_id": settings.get("my_espn_team_id"),
     }
 
 

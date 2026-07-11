@@ -1108,8 +1108,8 @@ async function renderData(gen) {
           <span class="kbd">espn_s2</span> and <span class="kbd">SWID</span> cookies from espn.com
           (browser dev tools → Application → Cookies while logged in).</div>
         <div class="formrow"><label>League ID</label><input type="text" id="eLeague" placeholder="e.g. 123456" style="width:140px"></div>
-        <div class="formrow"><label>espn_s2</label><input type="text" id="eS2" placeholder="long cookie value" style="flex:1"></div>
-        <div class="formrow"><label>SWID</label><input type="text" id="eSwid" placeholder="{XXXXXXXX-...}" style="flex:1"></div>
+        <div class="formrow"><label>espn_s2</label><input type="password" id="eS2" placeholder="long cookie value (hidden once entered)" style="flex:1" autocomplete="off"></div>
+        <div class="formrow"><label>SWID</label><input type="password" id="eSwid" placeholder="{XXXXXXXX-...}" style="flex:1" autocomplete="off"></div>
         <div class="formrow"><label>My ESPN team</label><select id="eMyTeam"><option value="">— sync once to list teams —</option></select>
           <button class="btn primary" id="eSync">Sync now</button></div>
         <div class="note" id="eStatus"></div>
@@ -1312,10 +1312,13 @@ async function renderData(gen) {
         my_espn_team_id: $("#eMyTeam").value || null,
       });
       const r = await api("/api/espn/sync", {});
+      const chosen = $("#eMyTeam").value || r.my_espn_team_id;
       $("#eMyTeam").innerHTML = r.teams.map(t =>
-        `<option value="${t.espn_id}">${esc(t.name)} (${t.players} players)</option>`).join("");
+        `<option value="${t.espn_id}" ${String(t.espn_id) === String(chosen) ? "selected" : ""}>${esc(t.name)} (${t.players} players)</option>`).join("");
       $("#eStatus").innerHTML = `✅ ${r.teams.length} teams, ${r.rostered} rostered players synced.` +
-        ` Pick <b>your</b> team above and sync again to mark it.` +
+        (r.marked_me && r.my_espn_team_id
+          ? ` Marked as you: <b>★ ${esc(r.marked_me)}</b>. Wrong team? Change the dropdown and sync again.`
+          : ` Pick <b>your</b> team above and sync again to mark it.`) +
         (r.unmatched.length ? `<br>⚠️ unmatched: ${r.unmatched.map(esc).join(", ")}` : "");
       await loadApp();
     } catch (e) { $("#eStatus").textContent = "❌ " + e.message; }
