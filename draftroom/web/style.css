@@ -77,12 +77,15 @@ td.r, th.r { text-align: right; }
   text-overflow: ellipsis; }
 .bmoney { font-size: 0.8vw; color: var(--green); font-weight: 700; white-space: nowrap; }
 .bmoney .dim { color: var(--muted); font-weight: 400; }
-.cell { border-radius: 4px; padding: 2px 4px; min-height: 3.1vh; display: flex;
+.cell { border-radius: 4px; padding: 1px 4px; min-height: 0; display: flex;
   flex-direction: column; justify-content: center; text-align: left; overflow: hidden; }
+.cell .cpr { line-height: 1.1; }
 .cell.empty { background: var(--bg2); border: 1px dashed var(--border); }
 .cell .cnm { font-weight: 700; font-size: 0.85vw; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
 .cell .cpr { font-size: 0.75vw; opacity: .85; }
+.board.dense .cell .cnm { font-size: 0.72vw; }
+.board.dense .cell .cpr { display: inline; font-size: 0.72vw; opacity: .9; }
 .cell.pos-QB { background: #3d2f5c; color: #dcc8ff; }
 .cell.pos-RB { background: #163a2c; color: #a9f4d3; }
 .cell.pos-WR { background: #14324d; color: #b3ddff; }

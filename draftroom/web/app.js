@@ -249,7 +249,11 @@ function draftBoard() {
   const rows = Math.max(...b.teams.map(t => t.roster.length), 8);
   const size = b.teams[0] ? b.teams[0].roster.length + b.teams[0].slots_left : 16;
   const nRows = Math.min(size, Math.max(rows + 1, 8));
-  let html = `<div class="board" style="grid-template-columns:repeat(${b.teams.length},minmax(0,1fr))">`;
+  // Rows shrink as the board grows so all 16 always fit on one TV screen;
+  // past 11 rows the cells compress to a single name+price line.
+  const dense = nRows >= 12;
+  const rowH = Math.max(2.0, Math.min(3.4, 34 / nRows)).toFixed(2);
+  let html = `<div class="board ${dense ? "dense" : ""}" style="grid-template-columns:repeat(${b.teams.length},minmax(0,1fr));grid-auto-rows:minmax(${rowH}vh,auto)">`;
   for (const t of b.teams) {
     html += `<div class="bcolhead ${b.nominating === t.name ? "nom" : ""}" data-focus="${t.id}" title="click to spotlight this team">
       <div class="bteam">${esc(t.name)}${b.nominating === t.name ? " 🎤" : ""}</div>
@@ -260,9 +264,12 @@ function draftBoard() {
     for (const t of b.teams) {
       const p = t.roster[r];
       html += p
-        ? `<div class="cell pos-${p.position || "DST"}" title="${esc(p.name)}">
-             <span class="cnm">${esc(shortName(p.name))}${p.keeper ? "🔒" : ""}</span>
-             <span class="cpr">$${p.price}</span></div>`
+        ? (dense
+          ? `<div class="cell pos-${p.position || "DST"}" title="${esc(p.name)} $${p.price}">
+               <span class="cnm">${esc(shortName(p.name))}${p.keeper ? "🔒" : ""} <span class="cpr">$${p.price}</span></span></div>`
+          : `<div class="cell pos-${p.position || "DST"}" title="${esc(p.name)}">
+               <span class="cnm">${esc(shortName(p.name))}${p.keeper ? "🔒" : ""}</span>
+               <span class="cpr">$${p.price}</span></div>`)
         : `<div class="cell empty"></div>`;
     }
   }
