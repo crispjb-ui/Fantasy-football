@@ -58,15 +58,21 @@ def import_history_csv(text, season):
 
     rows, skipped = [], []
     for row in reader:
-        raw_team, raw_name = row.get(team_c), (row.get(name_c) or "").strip()
+        raw_team = (row.get(team_c) or "").strip()
+        raw_name = (row.get(name_c) or "").strip()
+        raw_price = (row.get(price_c) or "").strip()
         if not raw_name:
+            continue
+        # Full ranking boards list every player; only drafted rows carry a
+        # manager + price. Blank on both = undrafted — skip silently.
+        if not raw_team and not raw_price:
             continue
         team_id = _match_team(raw_team, tidx)
         if team_id is None:
             skipped.append(f"unknown team '{raw_team}' ({raw_name})")
             continue
         try:
-            price = int(float(str(row.get(price_c)).replace("$", "").strip()))
+            price = int(float(raw_price.replace("$", "").replace(",", "").strip()))
         except (TypeError, ValueError):
             skipped.append(f"bad price for {raw_name}")
             continue

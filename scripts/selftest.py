@@ -600,13 +600,16 @@ check("alias mapped sale to team 4", pk is not None and pk["team_id"] == 4, str(
 # --- real-world sheet layout: TSV paste, dual Team columns, "Value" price, POS ranks -----------
 r, s = call("POST", "/api/teams", {"id": 2, "alias": "Nova"})
 tsv_2022 = (
-    "RK\tPLAYER NAME\tTEAM\tPOS\tBYE WEEK\tTeam\t\tValue\n"
-    "1\tJonathan Taylor\tIND\tRB1\t14\tNova\t1\t$ 146\n"
-    "2\tChristian McCaffrey\tCAR\tRB2\t13\tCrisp\t1\t$ 150\n"
-    "3\tDerrick Henry\tTEN\tRB3\t6\tCrisp\t1\t$ 159\n"
+    "RK\tPLAYER NAME\tTEAM\tPOS\tBYE WEEK\tStars\t+/-\tTeam\t\tValue\n"
+    "1\tJonathan Taylor\tIND\tRB1\t14\t5 out of 5 stars\t-29\tNova\t1\t$ 146\n"
+    "2\tChristian McCaffrey\tCAR\tRB2\t13\t5 out of 5 stars\t38\tCrisp\t1\t$ 150\n"
+    "3\tDerrick Henry\tTEN\tRB3\t6\t4 out of 5 stars\t-\tCrisp\t1\t$ 159\n"
+    "319\tGeno Smith\tSEA\tQB36\t11\t3 out of 5 stars\t11\t\t1\t\n"      # undrafted
+    "282\tChicago Bears\tCHI\tDST23\t14\t2 out of 5 stars\t60\t\t1\t\n"  # undrafted
 )
 r, s = call("POST", "/api/history/import", {"text": tsv_2022, "season": 2022})
 check("2022 TSV sheet layout imports", s == 200 and r["imported"] == 3 and not r["skipped"], str(r))
+check("undrafted board rows silently ignored", r["imported"] == 3, f"imported={r['imported']}")
 h22 = _db.history(2022)
 taylor = next(x for x in h22 if "Taylor" in x["player_name"])
 check("manager column (not NFL team) mapped via alias", taylor["team_id"] == 2, str(taylor))
