@@ -126,6 +126,19 @@ check("remaining/drafted counts", r["remaining_ranked"]["RB"] == 2 and r["drafte
       str((r["remaining_ranked"], r["drafted_pos"])))
 check("money stats", r["money"]["spent"] > 0 and r["money"]["top"] >= 445, str(r["money"]))
 
+# --- kicker inclusion rule (popularity rank must not exclude active kickers) ------------
+n = room.load_pool_from_sleeper({
+    "k1": {"position": "K", "team": "DAL", "status": "Active",
+           "first_name": "Obscure", "last_name": "Kicker"},        # no search_rank at all
+    "k2": {"position": "K", "team": None, "status": "Active",
+           "first_name": "Retired", "last_name": "Kicker"},        # no team -> excluded
+    "wr1": {"position": "WR", "team": "DAL", "search_rank": 9000,
+            "first_name": "Deep", "last_name": "Benchwarmer"},     # unpopular WR -> excluded
+})
+check("active kicker without search_rank loads", n == 1, f"n={n}")
+r, s = call("GET", "/api/players?q=obscure kicker")
+check("kicker searchable", any(p["name"] == "Obscure Kicker" for p in r["players"]), str(r))
+
 # --- sync + exports ------------------------------------------------------------------
 r, s = call("GET", "/api/sync")
 check("sync feed", s == 200 and len(r["sales"]) == 3 and

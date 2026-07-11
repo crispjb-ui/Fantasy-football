@@ -378,7 +378,12 @@ def load_pool_from_sleeper(players, adp_entries=None):
         if pos not in ("QB", "RB", "WR", "TE", "K", "DST"):
             continue
         rank = p.get("search_rank") or 9999999
-        if pos != "DST" and (rank > 750 or not p.get("team")):
+        if pos == "K":
+            # Kickers rank terribly in Sleeper's popularity score — include
+            # every active kicker on an NFL roster instead.
+            if not p.get("team") or (p.get("status") or "Active") != "Active":
+                continue
+        elif pos != "DST" and (rank > 750 or not p.get("team")):
             continue
         name = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
         if not name:
