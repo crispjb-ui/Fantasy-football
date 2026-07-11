@@ -104,7 +104,7 @@ const Opening: React.FC = () => {
           opacity: sub,
         }}
       >
-        LEAGUE UNC&nbsp;&nbsp;·&nbsp;&nbsp;EST. 2007
+        LEAGUE UNC&nbsp;&nbsp;·&nbsp;&nbsp;EST. 2006
       </div>
       <AbsoluteFill style={{ background: "#fff", opacity: flash * 0.9 }} />
     </AbsoluteFill>
