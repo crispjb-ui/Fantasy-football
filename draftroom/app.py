@@ -345,6 +345,11 @@ def api_nominator(q, body):
     return {"ok": True, **{"nominating": board()["nominating"]}}
 
 
+def _pool_counts():
+    return {r["position"] or "?": r["c"] for r in connect().execute(
+        "SELECT position, COUNT(*) AS c FROM pool GROUP BY position")}
+
+
 def api_pool_refresh(q, body):
     err = check_pin(body)
     if err:
@@ -360,8 +365,8 @@ def api_pool_refresh(q, body):
             adp_entries = json.loads(resp.read().decode())
     except Exception as e:  # noqa: BLE001 — ADP is a bonus, not a blocker
         adp_note = f"ADP fetch failed ({e}) — paste an ESPN ADP CSV instead"
-    return {"ok": True, "loaded": load_pool_from_sleeper(players, adp_entries),
-            "adp_note": adp_note}
+    n = load_pool_from_sleeper(players, adp_entries)
+    return {"ok": True, "loaded": n, "by_pos": _pool_counts(), "adp_note": adp_note}
 
 
 def load_pool_from_sleeper(players, adp_entries=None):
@@ -458,7 +463,7 @@ def api_pool_import(q, body):
                           ((row.get(nfl_c) or "").strip().upper() or None) if nfl_c else None, adp))
         n += 1
     conn.commit()
-    return {"ok": True, "loaded": n}
+    return {"ok": True, "loaded": n, "by_pos": _pool_counts()}
 
 
 # --- exports & copilot sync --------------------------------------------------------

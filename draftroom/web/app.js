@@ -387,11 +387,13 @@ function renderSetup() {
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };
+  const census = r => Object.entries(r.by_pos || {})
+    .map(([p, c]) => `${p}:${c}`).join(" · ");
   $("#poolBtn").onclick = async () => {
     toast("Loading player pool…");
     try {
       const r = await api("/api/pool/refresh", { pin: $("#pin").value });
-      toast(`${r.loaded} players loaded`);
+      toast(`Pool loaded — ${census(r)}${r.adp_note ? " ⚠ " + r.adp_note : ""}`);
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };
@@ -409,7 +411,7 @@ function renderSetup() {
   $("#poolImp").onclick = async () => {
     try {
       const r = await api("/api/pool/import", { pin: $("#pin").value, text: $("#poolCsv").value });
-      toast(`${r.loaded} players imported`);
+      toast(`Imported — ${census(r)}`);
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };
