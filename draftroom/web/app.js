@@ -112,14 +112,16 @@ function renderScore() {
       style="width:100%;font-size:18px;padding:14px" autocomplete="off">
     <div id="results"></div>
     ${sel ? `
-    <div class="headline">SELLING: ${esc(sel.name)} ${sel.position ? `(${sel.position})` : ""}</div>
+    <div class="headline">SELLING: ${esc(sel.name)}${sel.position ? ` (${sel.position})` : ""}${sel.free ? ' <span class="dim">— new player</span>' : ""}</div>
     <div class="row">
+      ${sel.free ? `<select id="freePos" style="font-size:16px">${["RB", "WR", "QB", "TE", "K", "DST"].map(p =>
+        `<option ${sel.position === p ? "selected" : ""}>${p}</option>`).join("")}</select>` : ""}
       <span class="dim">$</span><input type="number" id="price" min="1" style="width:110px;font-size:22px" autofocus>
       <select id="team" style="font-size:16px">${S.board.teams.map(t =>
         `<option value="${t.id}">${esc(t.name)} — $${t.budget_left} left (max $${t.max_bid})</option>`).join("")}</select>
       <label class="note"><input type="checkbox" id="keeper"> keeper</label>
       <button class="btn primary" id="sold" style="font-size:18px">SOLD 🔨</button>
-    </div>` : `<div class="note">Search and tap the player being auctioned.</div>`}
+    </div>` : `<div class="note">Search and tap the player being auctioned. Not in the list? Type the full name and use the ➕ row.</div>`}
   </div>
   <div class="panel"><h2>Budgets</h2>${budgetsGrid()}</div>
   <div class="panel">
@@ -141,7 +143,8 @@ function renderScore() {
           <span class="pos pos-${p.position || "DST"}">${p.position || "?"}</span>
           <span style="flex:1">${esc(p.name)} <span class="dim">${esc(p.nfl || "")}${p.drafted ? " — DRAFTED" : ""}</span></span>
         </div>`).join("") +
-        (q.includes(",") ? `<div class="result" data-free="${esc(q)}"><span class="pos">+</span><span>Sell "${esc(q)}" (not in pool)</span></div>` : "");
+        (q.length > 2 ? `<div class="result" data-free="${esc(q)}"><span class="pos">➕</span>
+          <span>Sell <b>"${esc(q.split(",")[0].trim())}"</b> as a NEW player (deep sleeper not in the list)</span></div>` : "");
       $$("#results .result").forEach(el => (el.onclick = () => {
         if (el.dataset.free) {
           const [nm, pos] = el.dataset.free.split(",").map(x => x.trim());
@@ -162,8 +165,10 @@ function renderScore() {
           pin: $("#pin").value, price: +$("#price").value, team_id: +$("#team").value,
           is_keeper: $("#keeper").checked,
         };
-        if (S.sel.free) { body.player_name = S.sel.name; body.position = S.sel.position; }
-        else body.player_id = S.sel.id;
+        if (S.sel.free) {
+          body.player_name = S.sel.name;
+          body.position = ($("#freePos") && $("#freePos").value) || S.sel.position;
+        } else body.player_id = S.sel.id;
         const r = await api("/api/pick", body);
         toast(`🔨 ${r.sold} → ${r.team} for $${r.price}`);
         S.sel = null;
@@ -341,6 +346,13 @@ function renderSetup() {
     </div>
     <textarea id="poolCsv" style="width:100%;min-height:80px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
     <div class="row"><button class="btn" id="poolImp">Import CSV</button></div>
+    <div class="row">
+      <span class="note">Add one player manually (deep sleeper):</span>
+      <input type="text" id="addNm" placeholder="Player name" style="width:200px">
+      <select id="addPos">${["RB", "WR", "QB", "TE", "K", "DST"].map(p => `<option>${p}</option>`).join("")}</select>
+      <input type="text" id="addTeam" placeholder="NFL team" style="width:90px">
+      <button class="btn" id="addBtn">➕ Add to pool</button>
+    </div>
     <h2 style="margin-top:12px">Exports</h2>
     <div class="row">
       <button class="btn" id="expCsv">Results CSV</button>
@@ -369,6 +381,17 @@ function renderSetup() {
     try {
       const r = await api("/api/pool/refresh", { pin: $("#pin").value });
       toast(`${r.loaded} players loaded`);
+      await refresh(); render();
+    } catch (e) { toast(e.message, true); }
+  };
+  $("#addBtn").onclick = async () => {
+    try {
+      const r = await api("/api/pool/add", {
+        pin: $("#pin").value, name: $("#addNm").value,
+        position: $("#addPos").value, nfl_team: $("#addTeam").value,
+      });
+      toast(`${r.name} added to the pool`);
+      $("#addNm").value = "";
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };

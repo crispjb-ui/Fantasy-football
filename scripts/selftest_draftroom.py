@@ -88,6 +88,14 @@ r, s = call("POST", "/api/pick", {"pin": PIN, "player_name": "Mystery Rookie", "
                                   "team_id": 3, "price": 2})
 check("free-text sale creates pool row", s == 200 and r["sold"] == "Mystery Rookie", str(r))
 
+# manual pool add (deep sleeper pre-loaded before the draft)
+r, s = call("POST", "/api/pool/add", {"pin": PIN, "name": "Deep Sleeper Jones",
+                                      "position": "WR", "nfl_team": "GB"})
+check("manual pool add", s == 200 and r["name"] == "Deep Sleeper Jones", str(r))
+r, s = call("GET", "/api/players?q=deep sleeper")
+check("added player searchable", any(p["name"] == "Deep Sleeper Jones" and p["position"] == "WR"
+                                     for p in r["players"]), str(r))
+
 # undo + delete
 r, s = call("POST", "/api/undo", {"pin": PIN})
 check("undo", s == 200 and r["undone"] == "Mystery Rookie", str(r))

@@ -659,6 +659,17 @@ r, s = call("GET", "/api/draft")
 pk_rb = next((p for p in r["picks"] if p["player"] and p["player"]["id"] == rb_a["id"]), None)
 check("room sale mapped via manager alias (Nova -> team 2)", pk_rb is not None and pk_rb["team_id"] == 2, str(pk_rb))
 check("room price flowed into budgets", pk_rb is not None and pk_rb["price"] == 41)
+
+# deep sleeper sold in the room that the copilot's projections don't know
+rcall("POST", "/api/pick", {"pin": "0000", "player_name": "Zeppelin Marmalade",
+                            "position": "RB", "team_id": 7, "price": 3})
+r, s = call("POST", "/api/room/sync", {})
+check("unknown player creates placeholder", s == 200 and r["added"] == 1 and
+      any("placeholder" in w for w in r["warnings"]), str(r))
+r, s = call("GET", "/api/draft")
+zep = next((p for p in r["picks"] if p["player"] and "Zeppelin" in p["player"]["name"]), None)
+t7 = next(t for t in r["teams"] if t["id"] == 7)
+check("placeholder sale counts against budget", zep is not None and zep["price"] == 3, str(zep))
 room_srv.shutdown()
 
 # --- fantasypros parser strategies -----------------------------------------------------------

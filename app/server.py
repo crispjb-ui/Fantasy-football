@@ -536,8 +536,14 @@ def _reconcile_sales(sales, warnings):
         key = (data_sources.norm_name(s["name"]), s["pos"]) if s.get("pos") else data_sources.norm_name(s["name"])
         player = pidx.get(key) or pidx.get(data_sources.norm_name(s["name"]))
         if player is None:
-            warnings.append(f"no player match: '{s['name']}'")
-            continue
+            # Deep sleeper the projections don't know: create a placeholder so
+            # the dollars still count against budgets and inflation.
+            pos = (s.get("pos") or "RB").upper()
+            pid_new = f"ext:{data_sources.norm_name(s['name']).replace(' ', '-')}:{pos}"
+            db.upsert_players([{"id": pid_new, "name": s["name"], "position": pos,
+                                "points": 0.5}], source="external")
+            player = db.get_player(pid_new)
+            warnings.append(f"'{s['name']}' not in projections — created a placeholder ({pos}) so the $ still counts")
         team_id = strategy._match_team(s["team_raw"], tidx) if s.get("team_raw") else None
         if team_id is None:
             if s.get("team_raw"):

@@ -392,6 +392,25 @@ def load_pool_from_sleeper(players, adp_entries=None):
     return n
 
 
+def api_pool_add(q, body):
+    """Manually add one player (deep sleepers the feeds don't know)."""
+    err = check_pin(body)
+    if err:
+        return err
+    name = (body.get("name") or "").strip()
+    if not name:
+        return {"error": "player name required"}
+    pos = re.sub(r"\d+$", "", (body.get("position") or "").strip().upper()) or None
+    conn = connect()
+    conn.execute("INSERT OR IGNORE INTO pool (name, norm, position, nfl_team) VALUES (?,?,?,?)",
+                 (name, norm_name(name), pos,
+                  (body.get("nfl_team") or "").strip().upper() or None))
+    conn.commit()
+    row = conn.execute("SELECT id FROM pool WHERE norm=?", (norm_name(name),)).fetchone()
+    audit(f"POOL ADD {name} ({pos or '?'})")
+    return {"ok": True, "id": row["id"], "name": name}
+
+
 def api_pool_import(q, body):
     err = check_pin(body)
     if err:
@@ -498,6 +517,7 @@ ROUTES = {
     ("POST", "/api/nominator"): api_nominator,
     ("POST", "/api/pool/refresh"): api_pool_refresh,
     ("POST", "/api/pool/import"): api_pool_import,
+    ("POST", "/api/pool/add"): api_pool_add,
     ("GET", "/api/sync"): api_sync,
     ("GET", "/api/export/csv"): api_export_csv,
     ("GET", "/api/export/espn"): api_export_espn,
