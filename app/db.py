@@ -128,6 +128,12 @@ def connect() -> sqlite3.Connection:
                 conn.execute(f"ALTER TABLE players ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
+        try:
+            # Per-team starting auction budget (league trades draft dollars);
+            # NULL falls back to the league default.
+            conn.execute("ALTER TABLE teams ADD COLUMN budget INTEGER")
+        except sqlite3.OperationalError:
+            pass
         _ensure_teams(conn)
         _local.conn = conn
     return conn
@@ -244,10 +250,13 @@ def teams():
     return [dict(r) for r in connect().execute("SELECT * FROM teams ORDER BY id").fetchall()]
 
 
-def update_team(team_id, name=None, is_me=None):
+def update_team(team_id, name=None, is_me=None, budget=None):
     conn = connect()
     if name is not None:
         conn.execute("UPDATE teams SET name=? WHERE id=?", (name, team_id))
+    if budget is not None:
+        conn.execute("UPDATE teams SET budget=? WHERE id=?",
+                     (int(budget) if budget else None, team_id))
     if is_me is not None and is_me:
         conn.execute("UPDATE teams SET is_me=0")
         conn.execute("UPDATE teams SET is_me=1 WHERE id=?", (team_id,))

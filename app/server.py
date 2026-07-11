@@ -22,6 +22,7 @@ WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 def _valued_pool():
     cfg = db.get_config()
+    cfg["league_money"] = sum(t.get("budget") or cfg["auction_budget"] for t in db.teams())
     return valuation.compute_values(db.all_players(), cfg), cfg
 
 
@@ -94,6 +95,7 @@ def api_state(q, body):
         "sheet": db.meta_get("sheet", {"url": "", "enabled": False}),
         "history_rows": len(db.history()),
         "mock_mode": bool(db.meta_get("mock_mode", False)),
+        "team_aliases": db.meta_get("team_aliases", {}),
         "nfl_state": db.meta_get("nfl_state"),
         "briefing_unseen": len([i for i in db.meta_get("briefing", [])
                                 if i["ts"] > db.meta_get("briefing_seen", 0)]),
@@ -210,7 +212,12 @@ def auto_refresh_once():
 
 
 def api_teams(q, body):
-    db.update_team(int(body["id"]), name=body.get("name"), is_me=body.get("is_me"))
+    db.update_team(int(body["id"]), name=body.get("name"), is_me=body.get("is_me"),
+                   budget=body.get("budget"))
+    if "alias" in body:
+        aliases = db.meta_get("team_aliases", {})
+        aliases[str(int(body["id"]))] = (body["alias"] or "").strip()
+        db.meta_set("team_aliases", aliases)
     return {"ok": True, "teams": db.teams(), "my_team_id": db.my_team_id()}
 
 

@@ -68,7 +68,9 @@ def compute_values(players, cfg):
     demand = _demand_by_position(by_pos, cfg)
     repl = _replacement_points(by_pos, demand)
 
-    total_money = cfg["num_teams"] * cfg["auction_budget"]          # 5000
+    # League money: sum of per-team budgets when they differ (draft-dollar
+    # trades), else teams x default budget.
+    total_money = cfg.get("league_money") or cfg["num_teams"] * cfg["auction_budget"]
     total_slots = cfg["num_teams"] * cfg["roster_size"]             # 160
     discretionary = total_money - total_slots                       # above-$1 dollars
 
@@ -187,12 +189,12 @@ def draft_state(valued_pool, picks, teams, cfg):
     """Everything the draft room needs: budgets, max bids, rosters, the
     remaining pool and the live inflation rate."""
     by_id = {p["id"]: p for p in valued_pool}
-    budget = cfg["auction_budget"]
     roster_size = cfg["roster_size"]
 
     team_state = {
         t["id"]: {
             "id": t["id"], "name": t["name"], "is_me": bool(t["is_me"]),
+            "budget_start": t.get("budget") or cfg["auction_budget"],
             "spent": 0, "players": [], "picks": [],
         }
         for t in teams
@@ -215,7 +217,7 @@ def draft_state(valued_pool, picks, teams, cfg):
         filled = len(ts["picks"])
         slots_left = max(0, roster_size - filled)
         ts["slots_left"] = slots_left
-        ts["budget_left"] = budget - ts["spent"]
+        ts["budget_left"] = ts["budget_start"] - ts["spent"]
         ts["max_bid"] = max(0, ts["budget_left"] - (slots_left - 1)) if slots_left > 0 else 0
         assignments, open_slots = _assign_roster_slots(ts["players"], cfg)
         ts["roster"] = assignments

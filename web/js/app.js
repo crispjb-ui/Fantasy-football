@@ -1119,7 +1119,9 @@ async function renderData(gen) {
         <div class="note" style="margin-bottom:8px">If your league tracks sales in a Google Sheet, paste its link here
           (shared as <b>“Anyone with the link can view”</b>). While enabled, the Draft Room auto-pulls it every 15 seconds
           and logs every sale — no manual entry. The sheet needs columns for <span class="kbd">Player</span>,
-          <span class="kbd">Price</span> and ideally <span class="kbd">Team</span> (header can be on any of the first rows).</div>
+          <span class="kbd">Price</span> and ideally <span class="kbd">Team</span> (header can be on any of the first rows).
+          The Team column is matched against team names <b>and the Sheet aliases</b> you set in League Teams —
+          so a sheet that says "Crisp" maps to the right roster.</div>
         <div class="formrow"><input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/…"
           value="${esc((a.sheet || {}).url || "")}" style="flex:1"></div>
         <div class="formrow">
@@ -1159,11 +1161,20 @@ async function renderData(gen) {
     <div>
       <div class="panel">
         <h2>League teams</h2>
-        <div class="note" style="margin-bottom:8px">Name the 10 teams and mark which one is YOU (★). Used for budgets, advice and nominations.</div>
+        <div class="note" style="margin-bottom:8px">Mark which team is YOU (★). <b>Sheet alias</b> = the name your
+          draft sheet / last-year CSV uses for that manager (e.g. last name) — the sync matches on it.
+          <b>Budget</b> = starting auction dollars (edit when draft-budget trades change it from $${a.config.auction_budget}).</div>
+        <div class="formrow" style="gap:8px"><label style="min-width:16px"></label>
+          <span class="dim" style="flex:1">Team (from ESPN)</span>
+          <span class="dim" style="width:130px">Sheet alias</span>
+          <span class="dim" style="width:70px">Budget</span></div>
         ${a.teams.map(t => `
-        <div class="formrow">
+        <div class="formrow" style="gap:8px">
           <input type="radio" name="isme" id="me${t.id}" ${t.is_me ? "checked" : ""} data-me="${t.id}" title="This is me">
           <input type="text" value="${esc(t.name)}" data-tname="${t.id}" style="flex:1">
+          <input type="text" value="${esc((a.team_aliases || {})[t.id] || "")}" data-talias="${t.id}"
+                 placeholder="e.g. ${["Singer", "Farmer", "Link", "Crisp", "Nova"][t.id % 5]}" style="width:130px">
+          <input type="number" value="${t.budget || a.config.auction_budget}" data-tbudget="${t.id}" style="width:70px">
         </div>`).join("")}
         <div class="formrow"><button class="btn primary" id="teamsSave">Save teams</button></div>
       </div>
@@ -1220,8 +1231,13 @@ async function renderData(gen) {
   $("#teamsSave").onclick = async () => {
     for (const inp of $$("[data-tname]")) {
       const id = +inp.dataset.tname;
-      const isMe = $(`#me${id}`).checked;
-      await api("/api/teams", { id, name: inp.value, is_me: isMe });
+      await api("/api/teams", {
+        id,
+        name: inp.value,
+        is_me: $(`#me${id}`).checked,
+        alias: $(`[data-talias="${id}"]`).value,
+        budget: +$(`[data-tbudget="${id}"]`).value || null,
+      });
     }
     await loadApp();
     toast("Teams saved");

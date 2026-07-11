@@ -559,6 +559,28 @@ backup_dir = os.path.join(os.path.dirname(os.environ["FFDRAFT_DB"]), "backups")
 check("draft auto-backups written", os.path.isdir(backup_dir) and len(os.listdir(backup_dir)) >= 1,
       backup_dir)
 
+# --- team aliases + per-team budgets ------------------------------------------------------------
+r, s = call("POST", "/api/teams", {"id": 4, "alias": "Crisp"})
+check("alias saved", s == 200, str(r)[:80])
+r, s = call("POST", "/api/teams", {"id": 5, "budget": 550})
+check("budget saved", s == 200, str(r)[:80])
+r, s = call("GET", "/api/draft")
+t5 = next(t for t in r["teams"] if t["id"] == 5)
+check("per-team budget drives budget_left", t5["budget_left"] == 550 - t5["spent"],
+      f"left={t5['budget_left']} spent={t5['spent']}")
+r, s = call("GET", "/api/state")
+check("aliases in state", r["team_aliases"].get("4") == "Crisp", str(r["team_aliases"]))
+
+# alias-based sheet matching: a sheet that says just "Crisp" lands on team 4
+alias_target = next(p for p in allp if p["id"] not in rostered_all and p["position"] == "TE")
+sheet2 = ["Player,Team,Price", f"{alias_target['name']},Crisp,23"]
+_ds.fetch_sheet_csv = lambda url: "\n".join(sheet2)
+r, s = call("POST", "/api/sheet/sync", {})
+check("alias sheet sync ok", s == 200 and r["added"] == 1, str(r))
+r, s = call("GET", "/api/draft")
+pk = next((p for p in r["picks"] if p["player"] and p["player"]["id"] == alias_target["id"]), None)
+check("alias mapped sale to team 4", pk is not None and pk["team_id"] == 4, str(pk))
+
 # --- fantasypros parser strategies -----------------------------------------------------------
 legacy_html = 'blah var ecrData = {"players": [{"player_name": "A", "player_position_id": "RB", "player_aav": 30}]}; more'
 nextjs_html = ('<html><script id="__NEXT_DATA__" type="application/json">'

@@ -13,10 +13,16 @@ from .data_sources import norm_name
 # --- last-year import ---------------------------------------------------------
 
 def _team_index():
+    """Match sheet/CSV team labels to local team ids: real team names, ids,
+    and user-defined aliases (e.g. the manager's last name, which is what
+    this league's draft sheet uses). Aliases win on collisions."""
     idx = {}
     for t in db.teams():
         idx[norm_name(t["name"])] = t["id"]
         idx[str(t["id"])] = t["id"]
+    for tid, alias in (db.meta_get("team_aliases", {}) or {}).items():
+        if alias and alias.strip():
+            idx[norm_name(alias)] = int(tid)
     return idx
 
 
