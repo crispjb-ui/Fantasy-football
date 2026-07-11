@@ -12,7 +12,7 @@ import {
 } from "remotion";
 import { MapCountdown, MAP_EMBED_DURATION } from "./MapCountdown";
 import { Plaque, PLAQUE_DURATION, PlaqueFinale, PLAQUE_FINALE_DURATION } from "./Plaque";
-import { ALL_TIME, NAME_HISTORY } from "./data";
+import { ALL_TIME, NAME_HISTORY, STANDINGS } from "./data";
 
 /* The full 20th-anniversary film, UNC palette throughout. */
 
@@ -28,6 +28,9 @@ export const FILM_FPS = 30;
 const OPEN_LEN = 150;
 const FACE_NAMES = NAME_HISTORY.Farmer; // the whole saga, 2007 -> Allen Face One
 const FACE_LEN = 90 + FACE_NAMES.length * 13 + 90;
+const PER_RECORD = 80;
+const RECORDS_LEN = 40 + 6 * PER_RECORD;
+const LASTYEAR_LEN = 460;
 const STAKES_LEN = 130;
 const CLOSER_LEN = 240;
 const PER_TICK = 32; // frames per number in the final 10..1 countdown
@@ -36,7 +39,9 @@ const TICKS_LEN = 60 + 10 * PER_TICK;
 const T_MAP = OPEN_LEN;
 const T_PLAQUE = T_MAP + MAP_EMBED_DURATION;
 const T_FACE = T_PLAQUE + PLAQUE_DURATION;
-const T_STAKES = T_FACE + FACE_LEN;
+const T_RECORDS = T_FACE + FACE_LEN;
+const T_LASTYEAR = T_RECORDS + RECORDS_LEN;
+const T_STAKES = T_LASTYEAR + LASTYEAR_LEN;
 const T_CLOSER = T_STAKES + STAKES_LEN;
 const T_TICKS = T_CLOSER + CLOSER_LEN;
 const T_FINALE = T_TICKS + TICKS_LEN;
@@ -125,6 +130,128 @@ const FaceSaga: React.FC = () => {
           )}
         </>
       )}
+    </AbsoluteFill>
+  );
+};
+
+/* Scene 4.5 — 20 years of numbers */
+const RECORDS = [
+  { num: "12-0-1", label: "THE PERFECT SEASON", sub: "SINGER'S SECRET SAUCE · 2020" },
+  { num: "1,623.7", label: "MOST POINTS EVER — AND NO RING", sub: "SINGER · 2018 · LOST THE FINAL" },
+  { num: "943.5", label: "FEWEST POINTS EVER", sub: "FACE MASK · 2020 · WENT 1-12" },
+  { num: "1,097.0", label: "TWIN SEASON TOTALS, TO THE DECIMAL", sub: "LINK & CRISP · 2019" },
+  { num: "5", label: "RUNNER-UPS. ZERO RINGS.", sub: "ANGRY BYRDS · ALL-TIME" },
+  { num: "19", label: "YEARS OF “POOP SHOOT”", sub: "KEVIN · NEVER ONCE CHANGED IT" },
+];
+
+const Records: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const head = spring({ frame, fps, config: { damping: 13 } });
+  const START = 40;
+  if (frame < START) {
+    return (
+      <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+        <div style={{ ...font, fontSize: 60, letterSpacing: 18, color: CAROLINA_LIGHT, opacity: head }}>
+          20 YEARS OF NUMBERS
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  const idx = Math.min(Math.floor((frame - START) / PER_RECORD), RECORDS.length - 1);
+  const r = RECORDS[idx];
+  const local = (frame - START) % PER_RECORD;
+  const s = spring({ frame: local, fps, config: { damping: 10, stiffness: 190 } });
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <div
+        style={{
+          ...font,
+          fontSize: r.num.length > 5 ? 250 : 330,
+          lineHeight: 1,
+          color: CAROLINA_LIGHT,
+          transform: `scale(${0.7 + s * 0.3})`,
+          opacity: Math.min(1, s * 1.4),
+          textShadow: `0 0 120px ${CAROLINA}66`,
+        }}
+      >
+        {r.num}
+      </div>
+      <div style={{ ...font, fontSize: 54, letterSpacing: 4, marginTop: 40, opacity: s }}>{r.label}</div>
+      <div style={{ ...font, fontSize: 28, letterSpacing: 8, marginTop: 20, color: CAROLINA, opacity: s }}>
+        {r.sub}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/* Scene 4.75 — last season, the setup for revenge */
+const LastYear: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const head = spring({ frame, fps, config: { damping: 13 } });
+  const rows = STANDINGS[2025];
+  const caption =
+    frame < 160
+      ? "FARMER WINS TITLE NUMBER SIX."
+      : frame < 310
+        ? "LINK: 11-3. MOST POINTS IN THE LEAGUE. SECOND. AGAIN."
+        : "2026: EVERYBODY WANTS BLOOD.";
+  const capColor = frame < 160 ? CAROLINA_LIGHT : frame < 310 ? RED : WHITE;
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <div style={{ ...font, fontSize: 44, letterSpacing: 16, color: CAROLINA_LIGHT, opacity: head, position: "absolute", top: 64 }}>
+        LAST SEASON · 2025
+      </div>
+      <div style={{ width: 1080, marginTop: 30 }}>
+        {rows.map((r, i) => {
+          const s = spring({ frame: frame - 20 - i * 7, fps, config: { damping: 13, stiffness: 160 } });
+          const gold = r.rank === 1;
+          const silver = r.rank === 2;
+          return (
+            <div
+              key={r.rank}
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 24,
+                padding: "9px 26px",
+                marginBottom: 6,
+                borderRadius: 8,
+                background: gold
+                  ? "linear-gradient(90deg, rgba(232,193,90,.28), rgba(232,193,90,.06))"
+                  : silver
+                    ? "linear-gradient(90deg, rgba(217,79,79,.25), rgba(217,79,79,.05))"
+                    : "rgba(75,156,211,.07)",
+                border: `1px solid ${gold ? "#e8c15a88" : silver ? `${RED}66` : `${CAROLINA}33`}`,
+                opacity: s,
+                transform: `translateX(${(1 - s) * -60}px)`,
+              }}
+            >
+              <span style={{ ...font, fontSize: 26, color: gold ? "#e8c15a" : CAROLINA_LIGHT, width: 44, textAlign: "left" }}>
+                {r.rank}
+              </span>
+              <span style={{ ...font, fontSize: 30, textAlign: "left", flex: 1 }}>{r.team.toUpperCase()}</span>
+              <span style={{ ...font, fontSize: 24, color: CAROLINA_LIGHT }}>{r.manager.toUpperCase()}</span>
+              <span style={{ ...font, fontSize: 26, width: 110, textAlign: "right" }}>{r.rec}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          ...font,
+          position: "absolute",
+          bottom: 46,
+          width: "100%",
+          fontSize: 40,
+          letterSpacing: 5,
+          color: capColor,
+          textShadow: "0 2px 24px #000",
+        }}
+      >
+        {caption}
+      </div>
     </AbsoluteFill>
   );
 };
@@ -291,6 +418,12 @@ export const Film: React.FC = () => (
     </Sequence>
     <Sequence from={T_FACE} durationInFrames={FACE_LEN}>
       <FaceSaga />
+    </Sequence>
+    <Sequence from={T_RECORDS} durationInFrames={RECORDS_LEN}>
+      <Records />
+    </Sequence>
+    <Sequence from={T_LASTYEAR} durationInFrames={LASTYEAR_LEN}>
+      <LastYear />
     </Sequence>
     <Sequence from={T_STAKES} durationInFrames={STAKES_LEN}>
       <Stakes />
