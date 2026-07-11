@@ -317,10 +317,8 @@ export const CHAMPIONS: { year: number; team: string; manager: string; key: stri
 ];
 
 /* All-time power ranking, best (rank 1) to worst (rank 10).
-   score = 2*(10 - avgFinish) + 3*titles + 0.5*top3 finishes — titles are what
-   (Lesesne's 2006 title counts; his avgFinish covers 2007-2025 only.)
-   the league plays for, average finish is the spine, podiums reward contention.
-   The video counts DOWN this list (worst first). */
+   Order pinned by Brett: his approved table, with the confirmed 2006 ring
+   bumping Lesesne one spot over Byrd. The video counts DOWN this list. */
 export type AllTimeRow = {
   rank: number; key: string; manager: string; record: string;
   winPct: number; avgFinish: number; pfPerGame: number;
@@ -329,9 +327,9 @@ export type AllTimeRow = {
 export const ALL_TIME: AllTimeRow[] = [
   { rank: 1, key: "Farmer", manager: "James Farmer", record: "116-133-3", winPct: 0.466, avgFinish: 5.11, pfPerGame: 97.1, titles: [2007, 2011, 2014, 2018, 2023, 2025], runnerUps: [2013, 2019], lastPlaces: [2016, 2024], top3: 9 },
   { rank: 2, key: "Singer", manager: "Justin Singer", record: "127-123-2", winPct: 0.508, avgFinish: 4.68, pfPerGame: 100.5, titles: [2008, 2020], runnerUps: [2018, 2022, 2024], lastPlaces: [], top3: 9 },
-  { rank: 3, key: "Lesesne", manager: "Brian Lesesne", record: "115-137", winPct: 0.456, avgFinish: 6.26, pfPerGame: 95.7, titles: [2006, 2012, 2016], runnerUps: [2014, 2023], lastPlaces: [2017, 2018, 2022, 2025], top3: 5 },
-  { rank: 4, key: "Kevin", manager: "Kevin Criscitiello", record: "131-120-1", winPct: 0.522, avgFinish: 5.58, pfPerGame: 98.6, titles: [2010, 2022], runnerUps: [], lastPlaces: [2013, 2015], top3: 6 },
-  { rank: 5, key: "Omar", manager: "Omar Nagji", record: "131-120-1", winPct: 0.522, avgFinish: 5.47, pfPerGame: 95.9, titles: [2013, 2015], runnerUps: [2020], lastPlaces: [2009, 2012, 2021], top3: 5 },
+  { rank: 3, key: "Kevin", manager: "Kevin Criscitiello", record: "131-120-1", winPct: 0.522, avgFinish: 5.58, pfPerGame: 98.6, titles: [2010, 2022], runnerUps: [], lastPlaces: [2013, 2015], top3: 6 },
+  { rank: 4, key: "Omar", manager: "Omar Nagji", record: "131-120-1", winPct: 0.522, avgFinish: 5.47, pfPerGame: 95.9, titles: [2013, 2015], runnerUps: [2020], lastPlaces: [2009, 2012, 2021], top3: 5 },
+  { rank: 5, key: "Lesesne", manager: "Brian Lesesne", record: "115-137", winPct: 0.456, avgFinish: 6.26, pfPerGame: 95.7, titles: [2006, 2012, 2016], runnerUps: [2014, 2023], lastPlaces: [2017, 2018, 2022, 2025], top3: 5 },
   { rank: 6, key: "Byrd", manager: "Brian Byrd", record: "142-97", winPct: 0.594, avgFinish: 3.89, pfPerGame: 105.3, titles: [], runnerUps: [2010, 2011, 2012, 2015, 2017], lastPlaces: [2023], top3: 9 },
   { rank: 7, key: "Ned", manager: "Ned Wellman", record: "129-122-1", winPct: 0.514, avgFinish: 5.95, pfPerGame: 99.0, titles: [2019, 2024], runnerUps: [2016], lastPlaces: [2007, 2010], top3: 3 },
   { rank: 8, key: "Link", manager: "Brett Link", record: "119-132-1", winPct: 0.474, avgFinish: 5.63, pfPerGame: 98.8, titles: [2009], runnerUps: [2025], lastPlaces: [2014], top3: 4 },

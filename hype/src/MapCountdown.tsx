@@ -11,7 +11,7 @@ import {
 } from "remotion";
 import { feature, mesh } from "topojson-client";
 import { geoAlbersUsa, geoPath } from "d3-geo";
-import { ALL_TIME, LOCATIONS, NAME_HISTORY, UNC } from "./data";
+import { ALL_TIME, CHAMPIONS, LOCATIONS, NAME_HISTORY, UNC } from "./data";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const topo = require("us-atlas/states-10m.json");
 
@@ -21,15 +21,24 @@ const NAVY_DEEP = "#081527";
 const CAROLINA = "#4B9CD3";
 const CAROLINA_LIGHT = "#7BAFD4";
 const WHITE = "#f4f8fc";
+const RED_ISH = "#d94f4f";
+const GOLD = "#e8c15a";
 
 export const MAP_FPS = 30;
 const HOLD_CH = 70; // tight on Chapel Hill
 const ZOOM_OUT_END = 160; // full USA visible
 const ARCS_DONE = 280; // all arcs landed
-const PER_STOP = 100; // frames per manager in the countdown
+const PER_STOP = 145; // frames per manager in the countdown — long enough to read & talk
 const COUNTDOWN_START = ARCS_DONE;
 const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
-export const MAP_DURATION = COUNTDOWN_END + 110; // pull back + hold
+/* Trophy tour: the plaque bounces champion to champion, 2006 -> 2025 */
+const TOUR_START = COUNTDOWN_END + 50; // camera is back at full USA by then
+const PER_HOP = 30;
+const HOPS_START = TOUR_START + 50;
+const EMERALD_AT = HOPS_START + 20 * PER_HOP; // then the punchline
+const TOUR_END = EMERALD_AT + 110;
+export const MAP_DURATION = TOUR_END + 140; // standalone closer
+export const MAP_EMBED_DURATION = TOUR_END + 30;
 
 /* ---- geo (computed once) ---- */
 const nation = feature(topo, topo.objects.nation) as any;
@@ -65,6 +74,19 @@ const STOPS = [...ALL_TIME].reverse().map((row, i) => {
   };
 });
 
+/* Trophy-tour waypoints: where each year's plaque "lives" (champ's current city). */
+const CHAMP_STOPS = CHAMPIONS.map((c) => {
+  const loc = LOCATIONS[c.key];
+  const [x, y] = pt(loc.lng, loc.lat);
+  const dx = c.key === "Link" ? 16 : c.key === "Crisp" ? -16 : 0;
+  return { ...c, x: x + dx, y, city: loc.city };
+});
+const BYRD_PT = (() => {
+  const loc = LOCATIONS.Byrd;
+  const [x, y] = pt(loc.lng, loc.lat);
+  return { x, y };
+})();
+
 const TAGLINES: Record<string, string> = {
   Crisp: "2017: THE MOST DOMINANT TITLE RUN EVER. SINCE: PAIN.",
   Rob: "GRRRRRREAT EXPECTATIONS — FINALLY MET IN 2021.",
@@ -93,7 +115,12 @@ const KFS: Kf[] = (() => {
     kfs.push({ t: t0 + 26, x: st.x, y: st.y, s: 3.1 });
     kfs.push({ t: t0 + PER_STOP, x: st.x, y: st.y, s: 3.1 });
   });
-  kfs.push({ t: COUNTDOWN_END + 60, x: 960, y: 540, s: 1 });
+  kfs.push({ t: TOUR_START, x: 960, y: 540, s: 1 });
+  kfs.push({ t: EMERALD_AT + 20, x: 960, y: 540, s: 1 });
+  // the punchline: drift toward Emerald Isle
+  kfs.push({ t: EMERALD_AT + 60, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
+  kfs.push({ t: TOUR_END, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
+  kfs.push({ t: TOUR_END + 40, x: 960, y: 540, s: 1 });
   kfs.push({ t: MAP_DURATION, x: 960, y: 540, s: 1 });
   return kfs;
 })();
@@ -134,9 +161,6 @@ const font: React.CSSProperties = {
   fontWeight: 900,
   color: WHITE,
 };
-
-/* standalone=false when embedded in the full Film (its closer is handled there) */
-export const MAP_EMBED_DURATION = COUNTDOWN_END + 60;
 
 export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = true }) => {
   const frame = useCurrentFrame();
@@ -237,6 +261,57 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
               </g>
             );
           })}
+
+          {/* trophy tour: the plaque hops champion to champion, 2006 -> 2025 */}
+          {frame >= HOPS_START - 10 && frame < TOUR_END + 40 && (() => {
+            const raw = (frame - HOPS_START) / PER_HOP;
+            const hopIdx = Math.max(0, Math.min(19, Math.floor(raw)));
+            const from = hopIdx === 0 ? { x: CH[0], y: CH[1] } : CHAMP_STOPS[hopIdx - 1];
+            const to = CHAMP_STOPS[hopIdx];
+            // travel for the first 65% of the hop, rest is a landing pause
+            const hopP = raw <= 0 ? 0 : Math.min(1, (raw - hopIdx) / 0.65);
+            const eased = Easing.inOut(Easing.quad)(Math.max(0, hopP));
+            const ctrl: [number, number] = [
+              (from.x + to.x) / 2,
+              Math.min(from.y, to.y) - Math.max(50, Math.hypot(to.x - from.x, to.y - from.y) * 0.3),
+            ];
+            const [px2, py2] = bez(eased, [from.x, from.y], ctrl, [to.x, to.y]);
+            const landed = hopP >= 1 || raw >= 19.65;
+            const done = frame >= EMERALD_AT;
+            const at = done ? CHAMP_STOPS[19] : { x: px2, y: py2 };
+            const k = 1 / Math.sqrt(cam.s);
+            return (
+              <g>
+                {landed && !done && (
+                  <circle cx={to.x} cy={to.y} r={(24 + 8 * Math.sin(frame / 4)) * k} fill="none" stroke="#e8c15a" strokeWidth={1.6 * k} opacity={0.8} />
+                )}
+                {/* golden mini-plaque */}
+                <g transform={`translate(${at.x} ${at.y})`}>
+                  <rect x={-34 * k} y={-15 * k} width={68 * k} height={30 * k} rx={4 * k}
+                    fill="#e8c15a" stroke="#8a723f" strokeWidth={1.2 * k}
+                    style={{ filter: "drop-shadow(0 0 10px rgba(232,193,90,.9))" }} />
+                  <text y={6 * k} textAnchor="middle"
+                    style={{ fontFamily: "Georgia, serif", fontWeight: 700 }}
+                    fontSize={17 * k} fill="#241a0c">
+                    {done ? 2025 : CHAMP_STOPS[hopIdx].year}
+                  </text>
+                </g>
+                {/* Emerald Isle: the plaque has never been */}
+                {frame >= EMERALD_AT + 45 && (
+                  <circle
+                    cx={BYRD_PT.x}
+                    cy={BYRD_PT.y}
+                    r={(30 + 6 * Math.sin(frame / 5)) * k}
+                    fill="none"
+                    stroke={RED_ISH}
+                    strokeWidth={2 * k}
+                    strokeDasharray={`${7 * k} ${5 * k}`}
+                    opacity={0.9}
+                  />
+                )}
+              </g>
+            );
+          })()}
         </g>
       </svg>
 
@@ -299,6 +374,73 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
           }}
         >
           ALL-TIME · WORST → BEST
+        </div>
+      )}
+
+      {/* trophy-tour captions (screen space, readable from the couch) */}
+      {frame >= TOUR_START && frame < EMERALD_AT + 30 && (
+        <div
+          style={{
+            ...font,
+            position: "absolute",
+            top: 44,
+            width: "100%",
+            textAlign: "center",
+            fontSize: 40,
+            letterSpacing: 12,
+            color: GOLD,
+            opacity: interpolate(frame, [TOUR_START, TOUR_START + 20], [0, 1], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            }),
+            textShadow: "0 0 40px rgba(232,193,90,.4)",
+          }}
+        >
+          20 YEARS OF HARDWARE
+        </div>
+      )}
+      {frame >= HOPS_START && frame < EMERALD_AT + 20 && (() => {
+        const hopIdx = Math.max(0, Math.min(19, Math.floor((frame - HOPS_START) / PER_HOP)));
+        const c = CHAMP_STOPS[hopIdx];
+        return (
+          <div
+            style={{
+              ...font,
+              position: "absolute",
+              bottom: 64,
+              width: "100%",
+              textAlign: "center",
+              fontSize: 46,
+              letterSpacing: 6,
+              color: WHITE,
+              textShadow: "0 2px 24px #000",
+            }}
+          >
+            <span style={{ color: GOLD }}>{c.year}</span>
+            &nbsp;&nbsp;{c.team.toUpperCase()}
+            <span style={{ color: CAROLINA_LIGHT }}>&nbsp;&nbsp;· {c.manager.toUpperCase()}</span>
+          </div>
+        );
+      })()}
+      {frame >= EMERALD_AT + 55 && frame < TOUR_END + 20 && (
+        <div
+          style={{
+            ...font,
+            position: "absolute",
+            bottom: 64,
+            width: "100%",
+            textAlign: "center",
+            fontSize: 44,
+            letterSpacing: 5,
+            color: RED_ISH,
+            opacity: interpolate(frame, [EMERALD_AT + 55, EMERALD_AT + 75], [0, 1], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            }),
+            textShadow: "0 2px 24px #000",
+          }}
+        >
+          20 YEARS. NEVER ONCE IN EMERALD ISLE.
         </div>
       )}
 
@@ -374,7 +516,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         })()}
 
       {/* closer */}
-      {standalone && frame >= COUNTDOWN_END + 40 && (
+      {standalone && frame >= TOUR_END + 50 && (
         <div
           style={{
             ...font,
