@@ -14,8 +14,12 @@ Everything Brett has specified so far. Production waits until he gives the go
   champions on the plaque match the transcribed standings. The plaque itself
   is dark wood + Carolina blue — recreate it digitally as the champions-wall
   scene, plates sliding in year by year, four empty rows at the bottom waiting.
-  Open question for Brett: the plaque shows asterisks on Lesesne 2006-07 and
-  Kevin 2022-23 — what do they mean?
+  Plaque asterisks: **2022 = The Concession** — championship decided the week
+  the Bills-Bengals game was suspended (Damar Hamlin, Wk 17); Kevin had a
+  Bengal knocked out in Q1 and trailed Singer by less than a point, and Singer
+  conceded the title anyway. Legendary sportsmanship beat — use it in the
+  champions-wall scene. The 2006 (Lesesne/LaSizzle) asterisk is still
+  unexplained — ask Brett.
 - Timothy Martin played 2007 only (finished 2nd); Brian Byrd took the seat in 2008.
 
 ## Look & feel
