@@ -221,3 +221,35 @@ On the **Strategy tab / Data & Setup**:
 - **Tuesdays:** ESPN sync → Waivers tab → bid the ranges.
 - **Sundays:** Lineup tab → fetch projections + Vegas → copy lineup into ESPN.
 - **January:** fetch actuals → apply weights → archive season.
+
+---
+
+## 8. The League Draft Room (optional — replaces the Google Sheet)
+
+A second, completely separate app the whole league uses on draft night
+(`draftroom/` — own database, own port, shows **no values or advice**, so
+your copilot edge stays private).
+
+**Start it:** `python3 draftroom/run_draftroom.py` — it prints two URLs:
+one for this laptop, one for managers' phones on the room's Wi-Fi.
+
+- **Setup** (once, before draft night): open `/#setup`, set team names,
+  budgets and a real PIN, and load the player pool (Sleeper button or CSV).
+- **Scorekeeper** (`/#score`): search → tap player → price → team → SOLD 🔨.
+  Budgets enforce hard stops automatically; undo and per-pick delete exist.
+  Sales for players not in the pool: type "Name, POS" and sell free-text.
+- **TV mode** (`/#tv`): cast to the room's screen — nominator + on-deck,
+  countdown timer, last sale, all budgets, pace/ETA. **Zoom managers:
+  screen-share this tab** and they're fully in the room.
+- **Manager view**: each manager picks their team on their phone — roster,
+  budget, max bid, live feed.
+- **Copilot sync**: in the copilot's Data & Setup → League Draft Room sync,
+  set `http://127.0.0.1:8300` and enable — every sale lands in your copilot
+  within ~5 seconds.
+- **After the draft**: Setup → exports. The results CSV imports straight
+  into the copilot's history for next year, and the ESPN entry list (plus
+  `draftroom/scripts/espn_autoenter.py`, best-effort automation) kills the
+  end-of-night ESPN data-entry chore.
+- Auto-backups every 10 picks in `draftroom/data/backups/`.
+
+Test: `python3 scripts/selftest_draftroom.py`

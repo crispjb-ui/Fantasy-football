@@ -616,6 +616,51 @@ check("manager column (not NFL team) mapped via alias", taylor["team_id"] == 2, 
 check("dollar-formatted price parsed", taylor["price"] == 146, str(taylor["price"]))
 check("POS rank stripped to position", taylor["position"] == "RB", str(taylor["position"]))
 
+# --- League Draft Room -> Copilot live sync (real HTTP, both apps in-process) ------------------
+os.environ["DRAFTROOM_DB"] = os.path.join(tempfile.mkdtemp(), "room.db")
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "draftroom_app",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "draftroom", "app.py"))
+_room = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_room)
+ROOM_PORT = 8792
+room_srv = _room.serve("127.0.0.1", ROOM_PORT)
+threading.Thread(target=room_srv.serve_forever, daemon=True).start()
+
+# room pool uses real copilot player names; room team 2 named by manager alias
+r, s = call("GET", "/api/draft")
+already = rostered_all | {p["player_id"] for p in r["picks"]}
+rb_a = next(p for p in allp if p["id"] not in already and p["position"] == "RB" and p["value"] >= 3)
+wr_a = next(p for p in allp if p["id"] not in already and p["position"] == "WR" and p["value"] >= 3)
+pool_csv = f"Player,Pos\n{rb_a['name']},RB\n{wr_a['name']},WR\n"
+
+
+def rcall(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(f"http://127.0.0.1:{ROOM_PORT}" + path, data=data, method=method,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+rcall("POST", "/api/pool/import", {"pin": "0000", "text": pool_csv})
+rcall("POST", "/api/setup", {"pin": "0000", "teams": [{"id": 2, "name": "Nova", "budget": 500}]})
+rcall("POST", "/api/pick", {"pin": "0000", "player_id": 1, "team_id": 2, "price": 41})
+rcall("POST", "/api/pick", {"pin": "0000", "player_id": 2, "team_id": 5, "price": 12})
+
+r, s = call("POST", "/api/room/config", {"url": f"http://127.0.0.1:{ROOM_PORT}", "enabled": True})
+check("room config saved (and supersedes sheet)", s == 200 and r["room"]["enabled"], str(r))
+r, s = call("GET", "/api/state")
+check("sheet auto-disabled when room enabled", r["sheet"]["enabled"] is False)
+r, s = call("POST", "/api/room/sync", {})
+check("room sync pulls sales over real HTTP", s == 200 and r["added"] == 2, str(r))
+r, s = call("GET", "/api/draft")
+pk_rb = next((p for p in r["picks"] if p["player"] and p["player"]["id"] == rb_a["id"]), None)
+check("room sale mapped via manager alias (Nova -> team 2)", pk_rb is not None and pk_rb["team_id"] == 2, str(pk_rb))
+check("room price flowed into budgets", pk_rb is not None and pk_rb["price"] == 41)
+room_srv.shutdown()
+
 # --- fantasypros parser strategies -----------------------------------------------------------
 legacy_html = 'blah var ecrData = {"players": [{"player_name": "A", "player_position_id": "RB", "player_aav": 30}]}; more'
 nextjs_html = ('<html><script id="__NEXT_DATA__" type="application/json">'

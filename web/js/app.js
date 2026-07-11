@@ -77,7 +77,9 @@ function renderChips() {
   if (lr && lr.source === "sample") {
     chips.push(`<span class="chip warn">Data <b>SAMPLE</b></span>`);
   }
-  if (S.app.sheet && S.app.sheet.enabled) {
+  if (S.app.room && S.app.room.enabled) {
+    chips.push(`<span class="chip good">Room sync <b>ON</b></span>`);
+  } else if (S.app.sheet && S.app.sheet.enabled) {
     chips.push(`<span class="chip good">Sheet sync <b>ON</b></span>`);
   }
   if (S.app.mock_mode) {
@@ -461,17 +463,23 @@ async function refreshDraft() {
   renderChips();
 }
 
-/* Google Sheet auto-sync: poll every 15s while the draft room is open. */
+/* Live draft feed: poll the League Draft Room (5s) or Google Sheet (15s). */
+let pollBusy = false;
 setInterval(async () => {
-  if (S.view !== "draft" || !S.app || !S.app.sheet || !S.app.sheet.enabled) return;
+  if (S.view !== "draft" || !S.app || pollBusy) return;
+  const useRoom = S.app.room && S.app.room.enabled;
+  if (!useRoom && !(S.app.sheet && S.app.sheet.enabled)) return;
+  if (!useRoom && Date.now() % 15000 > 5000) return;   // sheet: ~every 15s
+  pollBusy = true;
   try {
-    const r = await api("/api/sheet/sync", {});
+    const r = await api(useRoom ? "/api/room/sync" : "/api/sheet/sync", {});
     if (r.added || r.updated || r.removed) {
       await refreshDraft();
-      toast(`Sheet sync: +${r.added} new, ${r.updated} changed${r.removed ? `, ${r.removed} removed` : ""}`);
+      toast(`${useRoom ? "Room" : "Sheet"} sync: +${r.added} new, ${r.updated} changed${r.removed ? `, ${r.removed} removed` : ""}`);
     }
-  } catch (e) { /* transient network issues are fine; next poll retries */ }
-}, 15000);
+  } catch (e) { /* transient; next poll retries */ }
+  pollBusy = false;
+}, 5000);
 
 /* ---------- strategy ---------- */
 
@@ -1132,6 +1140,21 @@ async function renderData(gen) {
         <div class="note" id="eStatus"></div>
       </div>
       <div class="panel">
+        <h2>League Draft Room sync</h2>
+        <div class="note" style="margin-bottom:8px">Running the <b>League Draft Room</b> app on draft night
+          (<span class="kbd">python3 draftroom/run_draftroom.py</span>)? Point the copilot at it and every sale flows in
+          within ~5 seconds — structured data, no sheet parsing, keepers included. Team names match via your
+          Sheet aliases. Enabling this supersedes the Google Sheet sync.</div>
+        <div class="formrow"><input type="text" id="roomUrl" placeholder="http://127.0.0.1:8300"
+          value="${esc((a.room || {}).url || "")}" style="flex:1"></div>
+        <div class="formrow">
+          <label><input type="checkbox" id="roomEnabled" ${(a.room || {}).enabled ? "checked" : ""}> Auto-sync during draft</label>
+          <button class="btn" id="roomSave">Save</button>
+          <button class="btn primary" id="roomTest">Sync now</button>
+        </div>
+        <div class="note" id="roomStatus"></div>
+      </div>
+      <div class="panel">
         <h2>Google Sheet draft sync</h2>
         <div class="note" style="margin-bottom:8px">If your league tracks sales in a Google Sheet, paste its link here
           (shared as <b>“Anyone with the link can view”</b>). While enabled, the Draft Room auto-pulls it every 15 seconds
@@ -1270,6 +1293,21 @@ async function renderData(gen) {
     toast("Settings saved");
   };
 
+  $("#roomSave").onclick = async () => {
+    await api("/api/room/config", { url: $("#roomUrl").value, enabled: $("#roomEnabled").checked });
+    await loadApp();
+    toast("Draft Room sync saved");
+  };
+  $("#roomTest").onclick = async () => {
+    $("#roomStatus").textContent = "Syncing…";
+    try {
+      await api("/api/room/config", { url: $("#roomUrl").value, enabled: $("#roomEnabled").checked });
+      const r = await api("/api/room/sync", {});
+      $("#roomStatus").innerHTML = `✅ ${r.rows} sales in the room — ${r.added} added, ${r.updated} updated, ${r.removed} removed.` +
+        (r.warnings.length ? `<br>⚠️ ${r.warnings.map(esc).join("<br>⚠️ ")}` : "");
+      await loadApp();
+    } catch (e) { $("#roomStatus").textContent = "❌ " + e.message; }
+  };
   $("#sheetSave").onclick = async () => {
     await api("/api/sheet/config", { url: $("#sheetUrl").value, enabled: $("#sheetEnabled").checked });
     await loadApp();

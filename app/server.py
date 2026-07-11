@@ -93,6 +93,7 @@ def api_state(q, body):
         "last_refresh": db.meta_get("last_refresh"),
         "faab_spent": sum(t["faab"] for t in db.transactions()),
         "sheet": db.meta_get("sheet", {"url": "", "enabled": False}),
+        "room": db.meta_get("room", {"url": "", "enabled": False}),
         "history_rows": len(db.history()),
         "mock_mode": bool(db.meta_get("mock_mode", False)),
         "team_aliases": db.meta_get("team_aliases", {}),
@@ -518,19 +519,10 @@ def api_sheet_config(q, body):
     return {"ok": True, "sheet": cur}
 
 
-def api_sheet_sync(q, body):
-    """Pull the shared Google Sheet and reconcile its sales into the pick log.
-
-    The sheet is the source of truth for non-keeper picks: new rows are added,
-    changed prices/teams are updated, and vanished rows are removed.
-    """
-    sheet = db.meta_get("sheet", {})
-    url = body.get("url") or sheet.get("url")
-    if not url:
-        return {"error": "no sheet URL configured"}
-    text = data_sources.fetch_sheet_csv(url)
-    sales, warnings = data_sources.parse_sheet_sales(text)
-
+def _reconcile_sales(sales, warnings):
+    """Reconcile an external sale feed (Google Sheet or League Draft Room)
+    into the pick log. The feed is source of truth for non-keeper picks:
+    adds, price/team corrections, and removals all flow through."""
     pool = db.all_players()
     pidx = {}
     for p in pool:
@@ -541,28 +533,29 @@ def api_sheet_sync(q, body):
 
     matched = {}
     for s in sales:
-        key = (data_sources.norm_name(s["name"]), s["pos"]) if s["pos"] else data_sources.norm_name(s["name"])
+        key = (data_sources.norm_name(s["name"]), s["pos"]) if s.get("pos") else data_sources.norm_name(s["name"])
         player = pidx.get(key) or pidx.get(data_sources.norm_name(s["name"]))
         if player is None:
             warnings.append(f"no player match: '{s['name']}'")
             continue
-        team_id = strategy._match_team(s["team_raw"], tidx) if s["team_raw"] else None
+        team_id = strategy._match_team(s["team_raw"], tidx) if s.get("team_raw") else None
         if team_id is None:
-            if s["team_raw"]:
+            if s.get("team_raw"):
                 warnings.append(f"unknown team '{s['team_raw']}' for {s['name']} — logged to your team")
             team_id = default_team
-        matched[player["id"]] = {"team_id": team_id, "price": s["price"]}
+        matched[player["id"]] = {"team_id": team_id, "price": s["price"],
+                                 "keeper": bool(s.get("keeper"))}
 
     existing = {pk["player_id"]: pk for pk in db.picks()}
     added = updated = removed = 0
     for pid, sale in matched.items():
         pk = existing.get(pid)
         if pk is None:
-            db.add_pick(pid, sale["team_id"], sale["price"], is_keeper=False)
+            db.add_pick(pid, sale["team_id"], sale["price"], is_keeper=sale["keeper"])
             added += 1
         elif not pk["is_keeper"] and (pk["price"] != sale["price"] or pk["team_id"] != sale["team_id"]):
             db.remove_pick(pk["id"])
-            db.add_pick(pid, sale["team_id"], sale["price"], is_keeper=False)
+            db.add_pick(pid, sale["team_id"], sale["price"], is_keeper=sale["keeper"])
             updated += 1
     if matched:
         for pid, pk in existing.items():
@@ -573,6 +566,45 @@ def api_sheet_sync(q, body):
         _maybe_backup()
     return {"ok": True, "added": added, "updated": updated, "removed": removed,
             "rows": len(sales), "warnings": warnings[:10]}
+
+
+def api_sheet_sync(q, body):
+    """Google Sheet live sync (legacy path — the League Draft Room replaces it)."""
+    sheet = db.meta_get("sheet", {})
+    url = body.get("url") or sheet.get("url")
+    if not url:
+        return {"error": "no sheet URL configured"}
+    text = data_sources.fetch_sheet_csv(url)
+    sales, warnings = data_sources.parse_sheet_sales(text)
+    return _reconcile_sales(sales, warnings)
+
+
+def api_room_config(q, body):
+    cur = db.meta_get("room", {"url": "", "enabled": False})
+    if "url" in body:
+        cur["url"] = (body["url"] or "").strip()
+    if "enabled" in body:
+        cur["enabled"] = bool(body["enabled"])
+        if cur["enabled"]:
+            # one live feed at a time — the room supersedes the sheet
+            sheet = db.meta_get("sheet", {"url": "", "enabled": False})
+            sheet["enabled"] = False
+            db.meta_set("sheet", sheet)
+    db.meta_set("room", cur)
+    return {"ok": True, "room": cur}
+
+
+def api_room_sync(q, body):
+    """Pull the League Draft Room's structured feed and reconcile."""
+    room = db.meta_get("room", {})
+    url = body.get("url") or room.get("url")
+    if not url:
+        return {"error": "no Draft Room URL configured"}
+    sales_raw = data_sources.fetch_room_sales(url)
+    sales = [{"name": s["player"], "pos": s.get("position"),
+              "team_raw": s.get("team", ""), "price": int(s["price"]),
+              "keeper": bool(s.get("keeper"))} for s in sales_raw]
+    return _reconcile_sales(sales, [])
 
 
 def api_espn_config(q, body):
@@ -971,6 +1003,8 @@ ROUTES = {
     ("GET", "/api/strategy"): api_strategy,
     ("POST", "/api/sheet/config"): api_sheet_config,
     ("POST", "/api/sheet/sync"): api_sheet_sync,
+    ("POST", "/api/room/config"): api_room_config,
+    ("POST", "/api/room/sync"): api_room_sync,
     ("POST", "/api/espn/config"): api_espn_config,
     ("POST", "/api/espn/sync"): api_espn_sync,
     ("GET", "/api/lineup"): api_lineup,

@@ -411,6 +411,17 @@ def fetch_fantasypros_aav():
     return matched
 
 
+# --- League Draft Room live sync ------------------------------------------------
+
+def fetch_room_sales(url):
+    """Structured JSON feed from the League Draft Room app (/api/sync)."""
+    base = url.rstrip("/")
+    if not base.endswith("/api/sync"):
+        base += "/api/sync"
+    data = json.loads(_get(base))
+    return data.get("sales") or []
+
+
 # --- Google Sheet live draft sync ---------------------------------------------
 
 _PRICE_COLS = {"price", "cost", "$", "amount", "bid", "sold for", "sale", "sale price"}
