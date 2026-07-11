@@ -488,8 +488,9 @@ async function renderStrategy(gen) {
     </div>`;
 
   const tempHtml = st.temperament
-    ? `<div class="note">Last year this room put <b>${st.temperament.actual_top10_share}%</b> of all money into its top 10 prices
-       (top 20: <b>${st.temperament.actual_top20_share}%</b>). Best-fit elite premium: <b>${(st.temperament.estimated_premium * 100).toFixed(0)}%</b>
+    ? `<div class="note">Across your <b>${st.temperament.seasons.join(", ")}</b> draft${st.temperament.seasons.length > 1 ? "s (recent years weighted heavier)" : ""},
+       this room put <b>${st.temperament.actual_top10_share}%</b> of all money into its top 10 prices
+       (top 20: <b>${st.temperament.actual_top20_share}%</b>, ${st.temperament.sample} sales). Best-fit elite premium: <b>${(st.temperament.estimated_premium * 100).toFixed(0)}%</b>
        (currently modeled at ${(st.elite_premium * 100).toFixed(0)}%).</div>
        ${Math.abs(st.temperament.estimated_premium - st.elite_premium) > 0.03
          ? `<div class="formrow"><button class="btn primary" id="applyPrem">Apply ${(st.temperament.estimated_premium * 100).toFixed(0)}% premium to the model</button></div>` : ""}`
@@ -530,8 +531,24 @@ async function renderStrategy(gen) {
        <div class="formrow"><button class="btn" id="scSnap">📸 Take preseason snapshot</button>
        <button class="btn primary" id="scActuals">Fetch actual results</button><span class="note" id="scStatus"></span></div>`;
 
+  const profHtml = (st.profiles && st.profiles.length)
+    ? `<div class="table-wrap"><table>
+        <tr><th>Manager</th><th>Style</th><th class="r">Top-3 spend</th><th class="r">Pet position</th><th class="r">Biggest buy</th><th class="r">Drafts</th></tr>
+        ${st.profiles.map(p => `
+        <tr ${p.is_me ? 'class="me"' : ""}>
+          <td>${esc(p.team)}${p.is_me ? " ★" : ""}</td>
+          <td><span class="tag" style="color:${p.style === "star-chaser" ? "var(--red)" : p.style === "value hunter" ? "var(--green)" : "var(--muted)"}">${p.style}</span></td>
+          <td class="r">${p.top3_pct}%</td>
+          <td class="r">${p.fav_pos ? `<span class="pos pos-${p.fav_pos}">${p.fav_pos}</span> ${p.fav_pos_pct}%` : "—"}</td>
+          <td class="r money">${money(p.biggest_buy)}</td>
+          <td class="r dim">${p.seasons}</td>
+        </tr>`).join("")}</table></div>
+      <div class="note" style="margin-top:6px">Star-chasers will outbid you on elites — make them pay; value hunters lurk on your mid-tier targets. Nominate into a rival's pet position to drain them.</div>`
+    : `<div class="note">Import past drafts (any years — 2022-24 all help) and every rival gets a drafting-personality profile.</div>`;
+
   $("#view").innerHTML = `
   <div class="panel"><h2>League temperament</h2>${tempHtml}</div>
+  <div class="panel"><h2>Rival tendencies — ${st.history_total ? "from your imported drafts" : "needs draft history"}</h2>${profHtml}</div>
   <div class="panel"><h2>Model scorecard — how did we do last time?</h2>${scHtml}</div>
   <div class="grid2">
     <div>

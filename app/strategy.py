@@ -120,20 +120,38 @@ def import_standings_csv(text):
 # --- temperament calibration -----------------------------------------------------
 
 def calibrate_premium(valued_pool, cfg):
-    """Estimate the league's elite premium from last year's actual prices.
+    """Estimate the league's elite premium from actual past prices.
 
-    Compares how much of total spend went to the top-10/top-20 sale prices
-    last year vs. what a premium-free value curve predicts, using the current
-    value distribution as the shape proxy (stable season over season).
+    Room behavior is sticky season over season, so this uses the most recent
+    prior season with a meaningful sample (any imported year works — e.g.
+    2024 results calibrate a 2026 draft fine). Compares the top-10/top-20
+    share of total spend vs. a premium-free value curve, using the current
+    value distribution as the shape proxy.
     """
-    hist = db.history(cfg["season"] - 1)
-    if len(hist) < 60:
+    by_season = {}
+    for h in db.history():
+        if h["season"] < cfg["season"]:
+            by_season.setdefault(h["season"], []).append(h["price"])
+    usable = {s: p for s, p in by_season.items() if len(p) >= 60}
+    if not usable:
         return None
-    prices = sorted((h["price"] for h in hist), reverse=True)
-    spend = sum(prices) or 1
-    actual = {k: sum(prices[:k]) / spend for k in (10, 20)}
+    # Recency-weighted blend across every imported draft (2022-24 etc.):
+    # newer seasons count more, but three drafts beat one for stability.
+    seasons = sorted(usable, reverse=True)
+    actual, wsum = {10: 0.0, 20: 0.0}, 0.0
+    for i, s in enumerate(seasons):
+        prices = sorted(usable[s], reverse=True)
+        spend = sum(prices) or 1
+        w = 0.6 ** i
+        wsum += w
+        for k in (10, 20):
+            actual[k] += w * sum(prices[:k]) / spend
+    for k in actual:
+        actual[k] /= wsum
+    sample = sum(len(p) for p in usable.values())
+    n_rows = int(sample / len(seasons))
 
-    values = sorted((p["value"] for p in valued_pool), reverse=True)[: len(prices)]
+    values = sorted((p["value"] for p in valued_pool), reverse=True)[:n_rows]
     vmax = values[0] if values else 1.0
     best, best_err = 0.0, 1e9
     for step in range(0, 31):
@@ -148,8 +166,56 @@ def calibrate_premium(valued_pool, cfg):
         "current_setting": cfg.get("elite_premium", 0),
         "actual_top10_share": round(actual[10] * 100, 1),
         "actual_top20_share": round(actual[20] * 100, 1),
-        "sample": len(hist),
+        "sample": sample,
+        "seasons": seasons,
     }
+
+
+def manager_profiles():
+    """Drafting personality per manager, pooled across every imported draft.
+
+    top-3 spend share -> star-chaser vs value-hunter; positional spend mix
+    -> pet position. With 2-3 seasons this is a real read on each rival.
+    """
+    per = {}
+    for h in db.history():
+        per.setdefault(h["team_id"], {}).setdefault(h["season"], []).append(h)
+    teams = {t["id"]: t for t in db.teams()}
+    profiles = []
+    for tid, seasons in per.items():
+        if tid not in teams:
+            continue
+        top3_shares, biggest, pos_spend, total = [], 0, {}, 0
+        for rows in seasons.values():
+            spend = sum(r["price"] for r in rows) or 1
+            prices = sorted((r["price"] for r in rows), reverse=True)
+            top3_shares.append(sum(prices[:3]) / spend)
+            biggest = max(biggest, prices[0])
+            total += spend
+            for r in rows:
+                if r["position"]:
+                    pos_spend[r["position"]] = pos_spend.get(r["position"], 0) + r["price"]
+        top3 = sum(top3_shares) / len(top3_shares)
+        style = ("star-chaser" if top3 >= 0.52 else
+                 "value hunter" if top3 <= 0.38 else "balanced")
+        fav_pos, fav_pct = None, 0
+        known = sum(pos_spend.values())
+        if known:
+            fav_pos = max(pos_spend, key=pos_spend.get)
+            fav_pct = round(pos_spend[fav_pos] / known * 100)
+        profiles.append({
+            "team_id": tid,
+            "team": teams[tid]["name"],
+            "is_me": bool(teams[tid]["is_me"]),
+            "seasons": len(seasons),
+            "style": style,
+            "top3_pct": round(top3 * 100),
+            "fav_pos": fav_pos,
+            "fav_pos_pct": fav_pct,
+            "biggest_buy": biggest,
+        })
+    profiles.sort(key=lambda p: -p["top3_pct"])
+    return profiles
 
 
 # --- keeper advisor ---------------------------------------------------------------

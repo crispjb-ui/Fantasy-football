@@ -484,8 +484,10 @@ def api_strategy(q, body):
 
     return {
         "temperament": temperament,
+        "profiles": strategy.manager_profiles(),
         "elite_premium": cfg.get("elite_premium", 0),
         "history_rows": len(db.history(cfg["season"] - 1)),
+        "history_total": len(db.history()),
         "standings": db.meta_get("standings", {}),
         "teams": {str(t["id"]): t["name"] for t in db.teams()},
         "keepers": [

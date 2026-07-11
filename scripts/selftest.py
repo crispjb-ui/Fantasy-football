@@ -232,6 +232,22 @@ r, s = call("GET", "/api/strategy")
 check("strategy responds", s == 200, str(r)[:200])
 t = r.get("temperament")
 check("temperament calibrated", t and 0.05 <= t["estimated_premium"] <= 0.60, str(t))
+check("temperament reports seasons", t and t["seasons"] == [2025], str(t and t["seasons"]))
+
+# second historical draft (older, different flavor) -> multi-season pooling + profiles
+lines23 = ["Team,Player,Price"]
+for i, p in enumerate(vp[:120]):
+    price = max(1, round(p["value"] * (1 + 0.18 * (p["value"] / vmax) ** 2)))
+    lines23.append(f"Team {(i % 10) + 1},{p['name']},{price}")
+r, s = call("POST", "/api/history/import", {"text": "\n".join(lines23), "season": 2023})
+check("2023 import", s == 200 and r["imported"] == 120, str(r))
+r, s = call("GET", "/api/strategy")
+t2 = r["temperament"]
+check("multi-season pooling (recent weighted)", t2["seasons"] == [2025, 2023] and t2["sample"] == 260, str(t2))
+profs = r["profiles"]
+check("manager profiles built", len(profs) == 10 and all(p["seasons"] >= 2 for p in profs), str(profs[:1]))
+check("profiles have style + pet position", all(p["style"] in ("star-chaser", "balanced", "value hunter")
+      and (p["fav_pos"] is None or p["fav_pos_pct"] > 0) for p in profs))
 check("keeper advisor has recs", any(len(k["recommended"]) > 0 for k in r["keepers"]))
 check("keeper rules respected", all(
     len(k["recommended"]) <= 2 and
