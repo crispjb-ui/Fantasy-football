@@ -118,7 +118,8 @@ def norm_name(name):
 
 def check_pin(body):
     if str(body.get("pin", "")) != str(setting("pin")):
-        return {"error": "wrong scorekeeper PIN"}
+        return {"error": "wrong scorekeeper PIN — enter it in the PIN box at the "
+                         "top of this page (default 0000 until you change it)"}
     return None
 
 

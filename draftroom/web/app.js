@@ -11,7 +11,7 @@ const S = {
   board: null,
   sel: null,           // selected player for sale
   myTeam: +localStorage.dr_team || 0,
-  pin: localStorage.dr_pin || "",
+  pin: localStorage.dr_pin || "0000",   // pre-fill the default so first-run just works
   watch: JSON.parse(localStorage.dr_watch || "[]"),
 };
 
