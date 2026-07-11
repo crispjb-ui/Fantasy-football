@@ -495,6 +495,15 @@ def parse_sheet_sales(text):
 
 # --- CSV import ----------------------------------------------------------------
 
+def make_reader(text):
+    """DictReader that accepts comma OR tab separation — pasting a block
+    straight out of Google Sheets/Excel produces TSV, and that should just
+    work."""
+    text = text.lstrip("﻿").strip("\n")
+    first = text.split("\n", 1)[0]
+    delim = "\t" if first.count("\t") > max(1, first.count(",")) else ","
+    return csv.DictReader(io.StringIO(text), delimiter=delim)
+
 _NAME_COLS = {"player", "name", "player name", "player_name"}
 _POS_COLS = {"pos", "position"}
 _TEAM_COLS = {"team", "tm", "nfl team"}
@@ -521,7 +530,7 @@ def import_csv(text, kind, source="csv"):
     """kind: 'projections' (name/pos/points or granular stats) or 'aav'.
     `source` labels the projection set — each label is one voice in the
     consensus (players.points = mean across sources)."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
+    reader = make_reader(text)
     if not reader.fieldnames:
         raise RuntimeError("CSV has no header row")
     name_col = _find_col(reader.fieldnames, _NAME_COLS)

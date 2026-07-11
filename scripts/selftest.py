@@ -597,6 +597,22 @@ r, s = call("GET", "/api/draft")
 pk = next((p for p in r["picks"] if p["player"] and p["player"]["id"] == alias_target["id"]), None)
 check("alias mapped sale to team 4", pk is not None and pk["team_id"] == 4, str(pk))
 
+# --- real-world sheet layout: TSV paste, dual Team columns, "Value" price, POS ranks -----------
+r, s = call("POST", "/api/teams", {"id": 2, "alias": "Nova"})
+tsv_2022 = (
+    "RK\tPLAYER NAME\tTEAM\tPOS\tBYE WEEK\tTeam\t\tValue\n"
+    "1\tJonathan Taylor\tIND\tRB1\t14\tNova\t1\t$ 146\n"
+    "2\tChristian McCaffrey\tCAR\tRB2\t13\tCrisp\t1\t$ 150\n"
+    "3\tDerrick Henry\tTEN\tRB3\t6\tCrisp\t1\t$ 159\n"
+)
+r, s = call("POST", "/api/history/import", {"text": tsv_2022, "season": 2022})
+check("2022 TSV sheet layout imports", s == 200 and r["imported"] == 3 and not r["skipped"], str(r))
+h22 = _db.history(2022)
+taylor = next(x for x in h22 if "Taylor" in x["player_name"])
+check("manager column (not NFL team) mapped via alias", taylor["team_id"] == 2, str(taylor))
+check("dollar-formatted price parsed", taylor["price"] == 146, str(taylor["price"]))
+check("POS rank stripped to position", taylor["position"] == "RB", str(taylor["position"]))
+
 # --- fantasypros parser strategies -----------------------------------------------------------
 legacy_html = 'blah var ecrData = {"players": [{"player_name": "A", "player_position_id": "RB", "player_aav": 30}]}; more'
 nextjs_html = ('<html><script id="__NEXT_DATA__" type="application/json">'

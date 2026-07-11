@@ -1,12 +1,10 @@
 """Pre-season strategy: league temperament calibration from last year's
 prices, keeper advisor, trade finder, and roster-blueprint optimizer."""
 
-import csv
-import io
 import itertools
 import re
 
-from . import db
+from . import data_sources, db
 from .data_sources import norm_name
 
 
@@ -38,14 +36,16 @@ def _match_team(raw, idx):
 
 
 def import_history_csv(text, season):
-    """CSV columns: Team, Player, Price[, Pos]. Replaces that season's data."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
+    """Columns: Team, Player, Price[, Pos] — comma or tab separated (pasting
+    straight from Google Sheets works). When a sheet has both an NFL "TEAM"
+    column and a manager "Team" column, the later one (the manager) wins."""
+    reader = data_sources.make_reader(text)
     if not reader.fieldnames:
         raise RuntimeError("CSV has no header row")
     cols = {c.strip().lower(): c for c in reader.fieldnames}
-    team_c = next((cols[k] for k in ("team", "owner", "franchise", "team name") if k in cols), None)
+    team_c = next((cols[k] for k in ("owner", "manager", "team", "franchise", "team name") if k in cols), None)
     name_c = next((cols[k] for k in ("player", "name", "player name") if k in cols), None)
-    price_c = next((cols[k] for k in ("price", "cost", "$", "amount", "bid") if k in cols), None)
+    price_c = next((cols[k] for k in ("price", "cost", "$", "amount", "bid", "value", "sale price") if k in cols), None)
     pos_c = next((cols[k] for k in ("pos", "position") if k in cols), None)
     if not (team_c and name_c and price_c):
         raise RuntimeError("Need columns: Team, Player, Price (optional Pos)")
@@ -88,7 +88,7 @@ def import_history_csv(text, season):
 
 def import_standings_csv(text):
     """CSV columns: Team, Rank[, W, L, PF]. Stored for trade-finder context."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
+    reader = data_sources.make_reader(text)
     cols = {c.strip().lower(): c for c in (reader.fieldnames or [])}
     team_c = next((cols[k] for k in ("team", "owner", "team name") if k in cols), None)
     rank_c = next((cols[k] for k in ("rank", "finish", "place", "standing") if k in cols), None)
