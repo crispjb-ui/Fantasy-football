@@ -1,6 +1,6 @@
 /* League UNC history — transcribed from ESPN final-standings screenshots (2007-2025).
    Founded 2006 on a different platform; those records are lost — 2026 is season 20.
-   Lesesne's 2007 team name was "THE FORMER CHAMP", which strongly suggests he won 2006.
+   2006 champion confirmed by the physical Champions Club plaque: Brian Lesesne, "LaSizzle".
    Final-standings rank = post-playoff placement: rank 1 = league champion.
    Timothy Martin played 2007 only; Brian Byrd took the seat from 2008 on. */
 
@@ -46,7 +46,8 @@ export const LOCATIONS: Record<string, { city: string; lat: number; lng: number 
   Byrd: { city: "Emerald Isle, NC", lat: 34.6779, lng: -76.951 },
 };
 
-/* Team-name progressions (year = first season under that name). */
+/* Team-name progressions (year = first season under that name).
+   2006 names unknown except the champion (LaSizzle, per the plaque). */
 export const NAME_HISTORY: Record<string, { year: number; name: string }[]> = {
   Farmer: [{ year: 2007, name: "Charm City Smash" }, { year: 2008, name: "Curry's Sauce" }, { year: 2009, name: "Replace Nizzle After Fueling" }, { year: 2010, name: "Touch Down There" }, { year: 2011, name: "The Face of The Franchise" }, { year: 2012, name: "The Two-Timing Face" }, { year: 2013, name: "Face Mode" }, { year: 2014, name: "Face Capital" }, { year: 2015, name: "Face Treble" }, { year: 2016, name: "FF Face Genesis" }, { year: 2017, name: "Shit On Your Face" }, { year: 2018, name: "Face Savage" }, { year: 2019, name: "Face Cuatro" }, { year: 2020, name: "Face Mask" }, { year: 2022, name: "Face The Music" }, { year: 2023, name: "Face G.O.A.T." }, { year: 2024, name: "Face Card" }, { year: 2025, name: "Allen Face One" }],
   Crisp: [{ year: 2007, name: "Team McCants" }, { year: 2008, name: "C-BUStin' Nuts" }, { year: 2009, name: "Ben RapedHerBerger" }, { year: 2012, name: "Edward Forte Hands" }, { year: 2013, name: "10 Seed" }, { year: 2014, name: "Young Blood" }, { year: 2015, name: "Drug Runner. Corp." }],
@@ -56,7 +57,7 @@ export const NAME_HISTORY: Record<string, { year: number; name: string }[]> = {
   Omar: [{ year: 2007, name: "Team nagji" }, { year: 2008, name: "slaying asians" }, { year: 2021, name: "\\ asians" }, { year: 2025, name: "slaying asians" }],
   Kevin: [{ year: 2007, name: "poop shoot" }],
   Ned: [{ year: 2007, name: "The Big Nizzles" }, { year: 2009, name: "El Poopo Squado" }, { year: 2010, name: "The Frozen Cockwarts" }, { year: 2013, name: "The Rusty Harpoons" }, { year: 2024, name: "The Very Sharp Harpoons" }, { year: 2026, name: "The Very Very Sharp Harpoons" }],
-  Lesesne: [{ year: 2007, name: "THE FORMER CHAMP" }, { year: 2008, name: "Attila's Huns" }, { year: 2009, name: "The XXX Champs" }, { year: 2010, name: "The Dirty Peaches" }, { year: 2011, name: "LT's Peach Juice" }, { year: 2012, name: "Peaches, Inc." }],
+  Lesesne: [{ year: 2006, name: "LaSizzle" }, { year: 2007, name: "THE FORMER CHAMP" }, { year: 2008, name: "Attila's Huns" }, { year: 2009, name: "The XXX Champs" }, { year: 2010, name: "The Dirty Peaches" }, { year: 2011, name: "LT's Peach Juice" }, { year: 2012, name: "Peaches, Inc." }],
   Rob: [{ year: 2007, name: "Middle Age Mom Affair" }, { year: 2008, name: "Pee In Your Anus" }, { year: 2009, name: "Oops I Came In Yia Yia" }, { year: 2011, name: "Oops I Blank In Yia Yia" }, { year: 2012, name: "Grrrrrreat Disappointments" }, { year: 2013, name: "Grrrrrreat Expectations" }],
   Martin: [{ year: 2007, name: "Dirty Jerz" }],
 };
@@ -293,6 +294,7 @@ export const STANDINGS: Record<number, SeasonRow[]> = {
 };
 
 export const CHAMPIONS: { year: number; team: string; manager: string; key: string }[] = [
+  { year: 2006, team: "LaSizzle", manager: "Brian Lesesne", key: "Lesesne" },
   { year: 2007, team: "Charm City Smash", manager: "James Farmer", key: "Farmer" },
   { year: 2008, team: "Bronco Bound", manager: "Justin Singer", key: "Singer" },
   { year: 2009, team: "Living Legends", manager: "Brett Link", key: "Link" },
@@ -312,11 +314,11 @@ export const CHAMPIONS: { year: number; team: string; manager: string; key: stri
   { year: 2023, team: "Face G.O.A.T.", manager: "James Farmer", key: "Farmer" },
   { year: 2024, team: "The Very Sharp Harpoons", manager: "Ned Wellman", key: "Ned" },
   { year: 2025, team: "Allen Face One", manager: "James Farmer", key: "Farmer" },
-  // 2006: lost to history — but see "THE FORMER CHAMP" above.
 ];
 
 /* All-time power ranking, best (rank 1) to worst (rank 10).
    score = 2*(10 - avgFinish) + 3*titles + 0.5*top3 finishes — titles are what
+   (Lesesne's 2006 title counts; his avgFinish covers 2007-2025 only.)
    the league plays for, average finish is the spine, podiums reward contention.
    The video counts DOWN this list (worst first). */
 export type AllTimeRow = {
@@ -327,10 +329,10 @@ export type AllTimeRow = {
 export const ALL_TIME: AllTimeRow[] = [
   { rank: 1, key: "Farmer", manager: "James Farmer", record: "116-133-3", winPct: 0.466, avgFinish: 5.11, pfPerGame: 97.1, titles: [2007, 2011, 2014, 2018, 2023, 2025], runnerUps: [2013, 2019], lastPlaces: [2016, 2024], top3: 9 },
   { rank: 2, key: "Singer", manager: "Justin Singer", record: "127-123-2", winPct: 0.508, avgFinish: 4.68, pfPerGame: 100.5, titles: [2008, 2020], runnerUps: [2018, 2022, 2024], lastPlaces: [], top3: 9 },
-  { rank: 3, key: "Kevin", manager: "Kevin Criscitiello", record: "131-120-1", winPct: 0.522, avgFinish: 5.58, pfPerGame: 98.6, titles: [2010, 2022], runnerUps: [], lastPlaces: [2013, 2015], top3: 6 },
-  { rank: 4, key: "Omar", manager: "Omar Nagji", record: "131-120-1", winPct: 0.522, avgFinish: 5.47, pfPerGame: 95.9, titles: [2013, 2015], runnerUps: [2020], lastPlaces: [2009, 2012, 2021], top3: 5 },
-  { rank: 5, key: "Byrd", manager: "Brian Byrd", record: "142-97", winPct: 0.594, avgFinish: 3.89, pfPerGame: 105.3, titles: [], runnerUps: [2010, 2011, 2012, 2015, 2017], lastPlaces: [2023], top3: 9 },
-  { rank: 6, key: "Lesesne", manager: "Brian Lesesne", record: "115-137", winPct: 0.456, avgFinish: 6.26, pfPerGame: 95.7, titles: [2012, 2016], runnerUps: [2014, 2023], lastPlaces: [2017, 2018, 2022, 2025], top3: 5 },
+  { rank: 3, key: "Lesesne", manager: "Brian Lesesne", record: "115-137", winPct: 0.456, avgFinish: 6.26, pfPerGame: 95.7, titles: [2006, 2012, 2016], runnerUps: [2014, 2023], lastPlaces: [2017, 2018, 2022, 2025], top3: 5 },
+  { rank: 4, key: "Kevin", manager: "Kevin Criscitiello", record: "131-120-1", winPct: 0.522, avgFinish: 5.58, pfPerGame: 98.6, titles: [2010, 2022], runnerUps: [], lastPlaces: [2013, 2015], top3: 6 },
+  { rank: 5, key: "Omar", manager: "Omar Nagji", record: "131-120-1", winPct: 0.522, avgFinish: 5.47, pfPerGame: 95.9, titles: [2013, 2015], runnerUps: [2020], lastPlaces: [2009, 2012, 2021], top3: 5 },
+  { rank: 6, key: "Byrd", manager: "Brian Byrd", record: "142-97", winPct: 0.594, avgFinish: 3.89, pfPerGame: 105.3, titles: [], runnerUps: [2010, 2011, 2012, 2015, 2017], lastPlaces: [2023], top3: 9 },
   { rank: 7, key: "Ned", manager: "Ned Wellman", record: "129-122-1", winPct: 0.514, avgFinish: 5.95, pfPerGame: 99.0, titles: [2019, 2024], runnerUps: [2016], lastPlaces: [2007, 2010], top3: 3 },
   { rank: 8, key: "Link", manager: "Brett Link", record: "119-132-1", winPct: 0.474, avgFinish: 5.63, pfPerGame: 98.8, titles: [2009], runnerUps: [2025], lastPlaces: [2014], top3: 4 },
   { rank: 9, key: "Rob", manager: "Rob Parker", record: "121-130-1", winPct: 0.482, avgFinish: 6.05, pfPerGame: 96.0, titles: [2021], runnerUps: [2008], lastPlaces: [2011], top3: 3 },

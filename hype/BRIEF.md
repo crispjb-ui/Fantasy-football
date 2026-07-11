@@ -9,8 +9,13 @@ Everything Brett has specified so far. Production waits until he gives the go
   2026 is season 20. On-screen: "EST. 2006".
 - ESPN era = 2007–2025, fully transcribed in `src/data.ts` (STANDINGS,
   CHAMPIONS, NAME_HISTORY, ALL_TIME, LOCATIONS).
-- Lesesne's 2007 team name was "THE FORMER CHAMP" → he very likely won 2006
-  (confirm with Brett before stating it as fact).
+- **2006 champion CONFIRMED by the physical rotating Champions Club plaque**
+  (photo from Brett): Brian Lesesne, "LaSizzle", 2006-2007. All 19 ESPN-era
+  champions on the plaque match the transcribed standings. The plaque itself
+  is dark wood + Carolina blue — recreate it digitally as the champions-wall
+  scene, plates sliding in year by year, four empty rows at the bottom waiting.
+  Open question for Brett: the plaque shows asterisks on Lesesne 2006-07 and
+  Kevin 2022-23 — what do they mean?
 - Timothy Martin played 2007 only (finished 2nd); Brian Byrd took the seat in 2008.
 
 ## Look & feel
@@ -29,10 +34,14 @@ Everything Brett has specified so far. Production waits until he gives the go
    Crisp + Link → Charleston SC, Kevin → Richmond VA, Farmer → Washington DC,
    Lesesne → Atlanta GA, Rob → West Virginia, Singer → Raleigh NC,
    Ned → Scottsdale AZ, Omar → Austin TX, Byrd → Emerald Isle NC.
-3. **All-time countdown, worst → best** — rank all 10 franchises using
+3. **All-time countdown, worst → best** — THE CENTERPIECE, staged ON the map:
+   after the arcs land, the camera flies city to city (worst first), each stop
+   presenting that manager's card (2025 logo, current team name, record, win%,
+   avg finish, title years, tagline) before swooping to the next. Rank via
    `ALL_TIME` in data.ts (score = 2×(10−avgFinish) + 3×titles + 0.5×top-3s).
    Key story: **Angry Byrds — best regular-season franchise ever
    (.594, most wins, 5 runner-ups) and the ONLY manager with zero titles.**
+   Prototype: `src/MapCountdown.tsx` (composition id `MapCountdown`).
 4. **Team-name progressions** — each manager's name history through the years
    (`NAME_HISTORY`). The Farmer "Face" saga (15 straight Face names since 2011)
    is a scene of its own. Kevin: "poop shoot" all 19 years, never changed.
