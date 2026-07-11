@@ -345,18 +345,52 @@ def usage_trend(rows):
 
 # --- FantasyPros market AAV (best-effort scrape) ------------------------------
 
+def _fp_extract_players(html):
+    """Find FantasyPros player rows in either of their known page formats:
+    the legacy `var ecrData = {...}` blob, or a `__NEXT_DATA__` JSON tree
+    (searched recursively for objects that look like priced players)."""
+    m = re.search(r"var\s+ecrData\s*=\s*(\{.*?\});", html, re.S)
+    if m:
+        try:
+            return json.loads(m.group(1)).get("players") or []
+        except json.JSONDecodeError:
+            pass
+    m = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if m:
+        try:
+            tree = json.loads(m.group(1))
+        except json.JSONDecodeError:
+            return []
+        found = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                name = node.get("player_name") or node.get("name") or node.get("full_name")
+                aav = node.get("player_aav") or node.get("aav") or node.get("auction_value") or node.get("avg")
+                pos = node.get("player_position_id") or node.get("position") or node.get("pos")
+                if name and aav is not None and pos:
+                    found.append({"player_name": name, "player_position_id": str(pos), "player_aav": aav})
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        walk(tree)
+        return found
+    return []
+
+
 def fetch_fantasypros_aav():
     """Scrape FantasyPros auction values (10-team, $500, standard).
 
-    Their page embeds a JS data blob; the format shifts occasionally, so this
-    is strictly best-effort. Returns count of players matched by name+position.
+    Their page markup shifts occasionally, so this is strictly best-effort
+    with multiple parsing strategies. Returns count of players matched.
     """
     html = _get(FANTASYPROS_AUCTION)
-    m = re.search(r"var\s+ecrData\s*=\s*(\{.*?\});", html, re.S)
-    if not m:
+    players = _fp_extract_players(html)
+    if not players:
         raise RuntimeError("FantasyPros page layout changed — use CSV import for AAV instead")
-    data = json.loads(m.group(1))
-    players = data.get("players") or []
     index = {}
     for p in db.all_players():
         index[(norm_name(p["name"]), p["position"])] = p["id"]

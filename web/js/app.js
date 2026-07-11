@@ -1097,6 +1097,7 @@ async function renderData(gen) {
           <button class="btn" id="rfSleeper">Sleeper projections</button>
           <button class="btn" id="rfTrend">Trending (waivers)</button>
           <button class="btn" id="rfFP">FantasyPros AAV</button>
+          <button class="btn" id="rfSched">Schedule / byes</button>
         </div>
         <div class="note" id="rfStatus"></div>
       </div>
@@ -1192,15 +1193,21 @@ async function renderData(gen) {
     $("#rfStatus").textContent = "Fetching… (needs internet access on this machine)";
     try {
       const r = await api("/api/refresh", { sources });
-      $("#rfStatus").innerHTML = Object.entries(r.results).map(([src, res]) =>
-        res.ok ? `✅ ${src}: ${esc(JSON.stringify(res))}` : `❌ ${src}: ${esc(res.error)}`).join("<br>");
+      S.refreshResults = r.results;
+      if (r.new_alerts) toast(`${r.new_alerts} new alert(s) in the 🔔 briefing`);
       await loadApp();
+      setView(S.view);   // re-render so pool size, source and checklist update
     } catch (e) { $("#rfStatus").textContent = "Failed: " + e.message; }
   };
-  $("#rfAll").onclick = () => refresh(["sleeper", "trending", "fantasypros"]);
+  if (S.refreshResults) {
+    $("#rfStatus").innerHTML = Object.entries(S.refreshResults).map(([src, res]) =>
+      res.ok ? `✅ ${src}: ${esc(JSON.stringify(res))}` : `❌ ${src}: ${esc(res.error)}`).join("<br>");
+  }
+  $("#rfAll").onclick = () => refresh(["sleeper", "trending", "fantasypros", "schedule", "state"]);
   $("#rfSleeper").onclick = () => refresh(["sleeper"]);
   $("#rfTrend").onclick = () => refresh(["trending"]);
   $("#rfFP").onclick = () => refresh(["fantasypros"]);
+  $("#rfSched").onclick = () => refresh(["schedule", "state"]);
 
   $("#csvBtn").onclick = async () => {
     try {

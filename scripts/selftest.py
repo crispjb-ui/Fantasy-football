@@ -559,6 +559,17 @@ backup_dir = os.path.join(os.path.dirname(os.environ["FFDRAFT_DB"]), "backups")
 check("draft auto-backups written", os.path.isdir(backup_dir) and len(os.listdir(backup_dir)) >= 1,
       backup_dir)
 
+# --- fantasypros parser strategies -----------------------------------------------------------
+legacy_html = 'blah var ecrData = {"players": [{"player_name": "A", "player_position_id": "RB", "player_aav": 30}]}; more'
+nextjs_html = ('<html><script id="__NEXT_DATA__" type="application/json">'
+               '{"props":{"pageProps":{"rows":[{"player_name":"B","position":"WR","aav":22},'
+               '{"note":"not a player"}]}}}</script></html>')
+p1 = _ds2._fp_extract_players(legacy_html)
+p2 = _ds2._fp_extract_players(nextjs_html)
+check("fp legacy ecrData parsed", len(p1) == 1 and p1[0]["player_name"] == "A", str(p1))
+check("fp __NEXT_DATA__ parsed", len(p2) == 1 and p2[0]["player_name"] == "B" and
+      p2[0]["player_position_id"] == "WR", str(p2))
+
 srv.shutdown()
 print()
 if failures:
