@@ -117,7 +117,7 @@ def norm_name(name):
 
 
 def check_pin(body):
-    if str(body.get("pin", "")) != str(setting("pin")):
+    if str(body.get("pin", "")).strip() != str(setting("pin")).strip():
         return {"error": "wrong scorekeeper PIN — enter it in the PIN box at the "
                          "top of this page (default 0000 until you change it)"}
     return None
@@ -549,6 +549,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mimetypes.guess_type(full)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")  # always serve fresh JS/CSS after updates
         self.end_headers()
         self.wfile.write(data)
 
