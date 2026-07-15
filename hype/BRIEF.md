@@ -85,11 +85,14 @@ Everything Brett has specified so far. Production waits until he gives the go
 
 ## Music
 
-- Fast-paced hype track driving the whole video; cut scene transitions to the
-  beat. Claude cannot generate/license real music — **Brett supplies an .mp3**
-  (drop it in `public/` as `music.mp3`; royalty-free or personal-use track),
-  wired in via Remotion `<Audio>`. Duration target: match the final cut
-  (~60–90s once all scenes land).
+- **James Farmer (ex-DJ) is supplying original house music.** Plan: treat his
+  track as the master timeline — build a beat map from the audio (BPM, beat
+  grid, downbeats, drops/breakdowns), then re-derive all scene timing from it:
+  transitions on 16/32-beat phrase boundaries, countdown stops = 4 bars each
+  with card slams on downbeats, first drop = arcs out of Chapel Hill, last
+  drop = START THE DRAFT, Emerald Isle sting on a breakdown. Awaiting the
+  file from Brett (chat upload or commit to `public/music.mp3` and push).
+  Until then `public/score.wav` is a synthesized placeholder.
 
 ## Still waiting on
 
