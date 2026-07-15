@@ -52,7 +52,7 @@ async function loadDraft() { S.draft = await api("/api/draft"); }
 const VIEWS = [
   ["draft", "Draft Room"], ["strategy", "Strategy"], ["players", "Players"],
   ["keepers", "Keepers"], ["lineup", "Lineup"], ["waivers", "Waivers"],
-  ["trades", "Trades"], ["data", "Data & Setup"],
+  ["trades", "Trades"], ["history", "History"], ["data", "Data & Setup"],
 ];
 
 function renderNav() {
@@ -130,6 +130,7 @@ async function setView(v) {
     else if (v === "lineup") await renderLineup(gen);
     else if (v === "waivers") await renderWaivers(gen);
     else if (v === "trades") await renderTrades(gen);
+    else if (v === "history") await renderHistory(gen);
     else if (v === "data") await renderData(gen);
   } catch (e) {
     if (gen === renderGen) {
@@ -627,6 +628,82 @@ async function renderStrategy(gen) {
     await setView("draft");
     selectPlayer(r.dataset.pid);
   }));
+}
+
+/* ---------- league history (2006-2025, bundled) ---------- */
+
+async function renderHistory(gen) {
+  const h = await api("/api/league_history");
+  if (stale(gen)) return;
+  const years = Object.keys(h.standings).sort((a, b) => b - a);
+  const year = S.historyYear && h.standings[S.historyYear] ? S.historyYear : years[0];
+  S.historyYear = year;
+
+  const titleYrs = r => r.titles.length ? r.titles.join(" · ") : "—";
+  const allTime = h.all_time.map(r => `
+    <tr>
+      <td><b>${r.rank}</b></td>
+      <td>${esc(r.manager)}</td>
+      <td>${esc(r.record)}</td>
+      <td>${r.win_pct.toFixed(3).slice(1)}</td>
+      <td>${r.avg_finish.toFixed(2)}</td>
+      <td>${esc(titleYrs(r))}</td>
+      <td>${r.runner_ups.length}</td>
+      <td>${r.last_places.length}</td>
+      <td><b>${r.score.toFixed(1)}</b></td>
+    </tr>`).join("");
+
+  const champs = h.champions.slice().reverse().map(c => `
+    <div class="result-row">
+      <b style="width:52px">${c.year}</b>
+      <span>${esc(c.team)}</span>
+      <span class="muted" style="margin-left:auto">${esc(c.manager)}</span>
+    </div>`).join("");
+
+  const rows = h.standings[year].map(r => `
+    <tr>
+      <td>${r.rank === 1 ? "🏆 " : ""}${r.rank}</td>
+      <td>${esc(r.team)}</td>
+      <td>${esc(r.manager)}</td>
+      <td>${esc(r.rec)}</td>
+      <td>${r.pf.toFixed(1)}</td>
+      <td>${r.pa.toFixed(1)}</td>
+    </tr>`).join("");
+
+  $("#view").innerHTML = `
+  <div class="cols">
+    <div>
+      <div class="panel">
+        <h2>All-Time Power Ranking (est. ${h.founded})</h2>
+        <div class="note" style="margin-bottom:8px">${esc(h.formula)}</div>
+        <table class="table">
+          <thead><tr><th>#</th><th>Manager</th><th>Record</th><th>Win%</th>
+            <th>Avg finish</th><th>Titles</th><th>2nds</th><th>Lasts</th><th>Score</th></tr></thead>
+          <tbody>${allTime}</tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2>Season standings
+          <select id="hist-year" style="margin-left:10px">
+            ${years.map(y => `<option value="${y}" ${y === year ? "selected" : ""}>${y}</option>`).join("")}
+          </select>
+        </h2>
+        <table class="table">
+          <thead><tr><th>#</th><th>Team</th><th>Manager</th><th>Rec</th><th>PF</th><th>PA</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Champions Club</h2>
+        <div class="note" style="margin-bottom:8px">Verified against the physical plaque.
+          2006 (LaSizzle) was on Yahoo — the year Lesesne won it on autopick.</div>
+        ${champs}
+      </div>
+    </div>
+  </div>`;
+  $("#hist-year").onchange = e => { S.historyYear = e.target.value; renderHistory(++renderGen); };
 }
 
 /* ---------- players table ---------- */

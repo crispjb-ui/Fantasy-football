@@ -683,6 +683,16 @@ check("fp legacy ecrData parsed", len(p1) == 1 and p1[0]["player_name"] == "A", 
 check("fp __NEXT_DATA__ parsed", len(p2) == 1 and p2[0]["player_name"] == "B" and
       p2[0]["player_position_id"] == "WR", str(p2))
 
+# --- bundled league history --------------------------------------------------------------
+r, s = call("GET", "/api/league_history")
+check("league history serves", s == 200 and r["founded"] == 2006, str(s))
+check("history has 19 seasons of standings", len(r["standings"]) == 19, str(len(r["standings"])))
+check("history has 20 champions incl 2006", len(r["champions"]) == 20 and
+      r["champions"][0]["year"] == 2006 and r["champions"][0]["team"] == "LaSizzle", str(r["champions"][0]))
+check("all-time ranking has 10 managers, Farmer first", len(r["all_time"]) == 10 and
+      r["all_time"][0]["key"] == "Farmer" and len(r["all_time"][0]["titles"]) == 6, str(r["all_time"][0]))
+check("history formula states independence", "independent" in r["formula"].lower(), r["formula"][:80])
+
 srv.shutdown()
 print()
 if failures:

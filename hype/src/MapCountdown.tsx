@@ -29,7 +29,8 @@ const HOLD_CH = 70; // tight on Chapel Hill
 const ZOOM_OUT_END = 160; // full USA visible
 const ARCS_DONE = 280; // all arcs landed
 const PER_STOP = 145; // frames per manager in the countdown — long enough to read & talk
-const COUNTDOWN_START = ARCS_DONE;
+const PREAMBLE = 300; // methodology card: rankings are Claude's independent analysis
+const COUNTDOWN_START = ARCS_DONE + PREAMBLE;
 const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
 /* Trophy tour: the plaque bounces champion to champion, 2006 -> 2025 */
 const TOUR_START = COUNTDOWN_END + 50; // camera is back at full USA by then
@@ -110,6 +111,7 @@ const KFS: Kf[] = (() => {
     usa,
     { t: ARCS_DONE, x: 960, y: 540, s: 1 },
   ];
+  kfs.push({ t: COUNTDOWN_START, x: 960, y: 540, s: 1 });
   STOPS.forEach((st, i) => {
     const t0 = COUNTDOWN_START + i * PER_STOP;
     kfs.push({ t: t0 + 26, x: st.x, y: st.y, s: 3.1 });
@@ -340,7 +342,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
           </div>
         </div>
       )}
-      {frame >= ZOOM_OUT_END && frame < COUNTDOWN_START && (
+      {frame >= ZOOM_OUT_END && frame < ARCS_DONE + 15 && (
         <div
           style={{
             ...font,
@@ -351,7 +353,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             fontSize: 52,
             letterSpacing: 12,
             color: WHITE,
-            opacity: interpolate(frame, [ZOOM_OUT_END, ZOOM_OUT_END + 20], [0, 1], {
+            opacity: interpolate(frame, [ZOOM_OUT_END, ZOOM_OUT_END + 20, ARCS_DONE - 5, ARCS_DONE + 15], [0, 1, 1, 0], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             }),
@@ -360,6 +362,55 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
           TEN MANAGERS. TEN CITIES. ONE LEAGUE.
         </div>
       )}
+
+      {/* methodology preamble — so nobody argues the rankings were rigged */}
+      {frame >= ARCS_DONE + 15 && frame < COUNTDOWN_START && (() => {
+        const local = frame - ARCS_DONE - 15;
+        const inS = spring({ frame: local, fps, config: { damping: 14 } });
+        const out = interpolate(frame, [COUNTDOWN_START - 20, COUNTDOWN_START - 2], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+        const line = (delay: number) =>
+          spring({ frame: local - delay, fps, config: { damping: 14 } });
+        return (
+          <AbsoluteFill style={{ background: `${NAVY_DEEP}d9`, justifyContent: "center", alignItems: "center", opacity: out }}>
+            <div style={{ width: 1420, textAlign: "center" }}>
+              <div style={{ ...font, fontSize: 54, letterSpacing: 14, color: CAROLINA_LIGHT, opacity: inS }}>
+                THE ALL-TIME RANKINGS
+              </div>
+              <div style={{ ...font, fontSize: 27, letterSpacing: 4, color: WHITE, marginTop: 34, lineHeight: 1.65, opacity: line(18) }}>
+                COMPILED INDEPENDENTLY BY CLAUDE — AN AI — FROM ALL 20 SEASONS OF FINAL STANDINGS.
+                <br />
+                NO MANAGER HAD INPUT. NO THUMB ON THE SCALE.
+              </div>
+              <div
+                style={{
+                  ...font,
+                  fontSize: 34,
+                  letterSpacing: 2,
+                  color: GOLD,
+                  marginTop: 44,
+                  padding: "18px 30px",
+                  border: `2px solid ${GOLD}55`,
+                  borderRadius: 12,
+                  display: "inline-block",
+                  opacity: line(40),
+                }}
+              >
+                SCORE&nbsp;=&nbsp;2 × AVG&nbsp;FINISH&nbsp;PTS&nbsp;&nbsp;+&nbsp;&nbsp;3 × TITLES&nbsp;&nbsp;+&nbsp;&nbsp;½ × TOP-3&nbsp;FINISHES
+              </div>
+              <div style={{ ...font, fontSize: 24, letterSpacing: 3, color: CAROLINA_LIGHT, marginTop: 40, lineHeight: 1.8, opacity: line(62) }}>
+                AVERAGE FINISH IS THE SPINE — 20 YEARS OF SHOWING UP.
+                <br />
+                TITLES WEIGH TRIPLE — RINGS ARE WHAT WE PLAY FOR.
+                <br />
+                PODIUMS COUNT — CONTENDING MATTERS EVEN WHEN YOU DON'T FINISH IT.
+              </div>
+            </div>
+          </AbsoluteFill>
+        );
+      })()}
       {activeIdx >= 0 && (
         <div
           style={{

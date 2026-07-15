@@ -12,8 +12,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import (analytics, db, data_sources, espn, mock, recommendations,
-               sample_data, strategy, valuation)
+from . import (analytics, db, data_sources, espn, league_history, mock,
+               recommendations, sample_data, strategy, valuation)
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
@@ -989,6 +989,19 @@ def api_transaction_delete(q, body):
     return {"ok": True}
 
 
+def api_league_history(q, body):
+    """Complete 2006-2025 league history bundled with the app (league_history.py):
+    per-season final standings, champions (plaque-verified), and the all-time
+    power ranking with its formula."""
+    return {
+        "founded": league_history.FOUNDED,
+        "formula": league_history.FORMULA,
+        "standings": league_history.STANDINGS,
+        "champions": league_history.CHAMPIONS,
+        "all_time": league_history.ALL_TIME,
+    }
+
+
 ROUTES = {
     ("GET", "/api/state"): api_state,
     ("POST", "/api/config"): api_config,
@@ -1033,6 +1046,7 @@ ROUTES = {
     ("GET", "/api/checklist"): api_checklist,
     ("GET", "/api/export"): api_export,
     ("GET", "/api/waivers"): api_waivers,
+    ("GET", "/api/league_history"): api_league_history,
     ("POST", "/api/transaction"): api_transaction,
     ("POST", "/api/transaction/delete"): api_transaction_delete,
 }

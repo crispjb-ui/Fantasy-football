@@ -331,7 +331,7 @@ const Closer: React.FC = () => {
         SOMEBODY'S GOTTA PAY.
       </div>
       <div style={{ ...font, fontSize: 30, letterSpacing: 12, opacity: s3, marginTop: 26, color: CAROLINA_LIGHT }}>
-        AUGUST 29 · THE CHAMP'S HOUSE · WASHINGTON, DC
+        AUGUST 29 · THE CHAMP'S HOUSE · LOTHIAN, MD
       </div>
     </AbsoluteFill>
   );
