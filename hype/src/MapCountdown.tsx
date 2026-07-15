@@ -29,7 +29,7 @@ const HOLD_CH = 70; // tight on Chapel Hill
 const ZOOM_OUT_END = 160; // full USA visible
 const ARCS_DONE = 280; // all arcs landed
 const PER_STOP = 145; // frames per manager in the countdown — long enough to read & talk
-const PREAMBLE = 300; // methodology card: rankings are Claude's independent analysis
+const PREAMBLE = 380; // methodology card: formula builds term by term
 const COUNTDOWN_START = ARCS_DONE + PREAMBLE;
 const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
 /* Trophy tour: the plaque bounces champion to champion, 2006 -> 2025 */
@@ -363,7 +363,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         </div>
       )}
 
-      {/* methodology preamble — so nobody argues the rankings were rigged */}
+      {/* methodology preamble — the formula assembles itself, term by term */}
       {frame >= ARCS_DONE + 15 && frame < COUNTDOWN_START && (() => {
         const local = frame - ARCS_DONE - 15;
         const inS = spring({ frame: local, fps, config: { damping: 14 } });
@@ -372,40 +372,70 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
           extrapolateRight: "clamp",
         });
         const line = (delay: number) =>
-          spring({ frame: local - delay, fps, config: { damping: 14 } });
+          spring({ frame: local - delay, fps, config: { damping: 13, stiffness: 150 } });
+        const TERMS = [
+          { at: 85, coef: "2 ×", term: "AVG FINISH", why: "20 YEARS OF SHOWING UP" },
+          { at: 155, coef: "3 ×", term: "TITLES", why: "WE PLAY FOR RINGS" },
+          { at: 225, coef: "½ ×", term: "TOP-3 FINISHES", why: "CONTENDING COUNTS" },
+        ];
         return (
           <AbsoluteFill style={{ background: `${NAVY_DEEP}d9`, justifyContent: "center", alignItems: "center", opacity: out }}>
-            <div style={{ width: 1420, textAlign: "center" }}>
+            <div style={{ width: 1660, textAlign: "center" }}>
               <div style={{ ...font, fontSize: 54, letterSpacing: 14, color: CAROLINA_LIGHT, opacity: inS }}>
                 THE ALL-TIME RANKINGS
               </div>
-              <div style={{ ...font, fontSize: 27, letterSpacing: 4, color: WHITE, marginTop: 34, lineHeight: 1.65, opacity: line(18) }}>
+              <div style={{ ...font, fontSize: 26, letterSpacing: 4, color: WHITE, marginTop: 28, lineHeight: 1.6, opacity: line(18) }}>
                 COMPILED INDEPENDENTLY BY CLAUDE — AN AI — FROM ALL 20 SEASONS OF FINAL STANDINGS.
                 <br />
                 NO MANAGER HAD INPUT. NO THUMB ON THE SCALE.
               </div>
+
               <div
                 style={{
-                  ...font,
-                  fontSize: 34,
-                  letterSpacing: 2,
-                  color: GOLD,
-                  marginTop: 44,
-                  padding: "18px 30px",
-                  border: `2px solid ${GOLD}55`,
-                  borderRadius: 12,
-                  display: "inline-block",
-                  opacity: line(40),
+                  display: "flex",
+                  alignItems: "stretch",
+                  justifyContent: "center",
+                  gap: 26,
+                  marginTop: 54,
                 }}
               >
-                SCORE&nbsp;=&nbsp;2 × AVG&nbsp;FINISH&nbsp;PTS&nbsp;&nbsp;+&nbsp;&nbsp;3 × TITLES&nbsp;&nbsp;+&nbsp;&nbsp;½ × TOP-3&nbsp;FINISHES
+                <div style={{ ...font, fontSize: 42, letterSpacing: 3, color: WHITE, alignSelf: "center", opacity: line(70) }}>
+                  SCORE&nbsp;=
+                </div>
+                {TERMS.map((t, i) => {
+                  const s = line(t.at);
+                  return (
+                    <React.Fragment key={t.term}>
+                      {i > 0 && (
+                        <div style={{ ...font, fontSize: 52, color: CAROLINA_LIGHT, alignSelf: "center", opacity: s }}>
+                          +
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          padding: "26px 34px 22px",
+                          border: `2px solid ${GOLD}88`,
+                          borderRadius: 14,
+                          background: `${GOLD}10`,
+                          boxShadow: `0 0 ${34 * s}px ${GOLD}33`,
+                          opacity: s,
+                          transform: `translateY(${(1 - s) * 46}px) scale(${0.85 + s * 0.15})`,
+                        }}
+                      >
+                        <div style={{ ...font, fontSize: 40, letterSpacing: 1, color: GOLD, whiteSpace: "nowrap" }}>
+                          {t.coef} {t.term}
+                        </div>
+                        <div style={{ ...font, fontSize: 21, letterSpacing: 3, color: CAROLINA_LIGHT, marginTop: 12, whiteSpace: "nowrap" }}>
+                          {t.why}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
               </div>
-              <div style={{ ...font, fontSize: 24, letterSpacing: 3, color: CAROLINA_LIGHT, marginTop: 40, lineHeight: 1.8, opacity: line(62) }}>
-                AVERAGE FINISH IS THE SPINE — 20 YEARS OF SHOWING UP.
-                <br />
-                TITLES WEIGH TRIPLE — RINGS ARE WHAT WE PLAY FOR.
-                <br />
-                PODIUMS COUNT — CONTENDING MATTERS EVEN WHEN YOU DON'T FINISH IT.
+
+              <div style={{ ...font, fontSize: 26, letterSpacing: 6, color: WHITE, marginTop: 48, opacity: line(295) }}>
+                TEN FRANCHISES ENTER. THE MATH DECIDES.
               </div>
             </div>
           </AbsoluteFill>
