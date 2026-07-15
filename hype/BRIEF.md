@@ -37,9 +37,12 @@ Everything Brett has specified so far. Production waits until he gives the go
    pull to a high-level view of the USA, then **arcing lines sprout from Chapel
    Hill across the country**, each arc **led by that team's 2025 logo**, landing
    where each manager lives now (`LOCATIONS` in data.ts):
-   Crisp + Link → Charleston SC, Kevin → Richmond VA, Farmer → Washington DC,
-   Lesesne → Atlanta GA, Rob → West Virginia, Singer → Raleigh NC,
+   Crisp + Link → Charleston SC, Kevin → Richmond VA, Farmer → Lothian MD,
+   Lesesne → Atlanta GA, Rob → Martinsburg WV, Singer → Raleigh NC,
    Ned → Scottsdale AZ, Omar → Austin TX, Byrd → Emerald Isle NC.
+   A 10s methodology preamble precedes the countdown: rankings compiled
+   independently by Claude (AI), no manager input, formula + rationale
+   on screen.
 3. **All-time countdown, worst → best** — THE CENTERPIECE, staged ON the map:
    after the arcs land, the camera flies city to city (worst first), each stop
    presenting that manager's card (2025 logo, current team name, record, win%,
@@ -57,7 +60,7 @@ Everything Brett has specified so far. Production waits until he gives the go
 
 ## Draft night 2026
 
-- **August 29, 2026, at James Farmer's house in Washington, DC.** League
+- **August 29, 2026, at James Farmer's house in Lothian, MD.** League
   tradition: the reigning champion picks the venue for the next draft — so the
   defending champ (Allen Face One) hosts the 20th-anniversary auction. Closer
   reads "AUGUST 29 · THE CHAMP'S HOUSE · WASHINGTON, DC".
