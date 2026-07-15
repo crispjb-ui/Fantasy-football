@@ -172,6 +172,13 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
     frame >= COUNTDOWN_START && frame < COUNTDOWN_END
       ? Math.floor((frame - COUNTDOWN_START) / PER_STOP)
       : -1;
+  // during the champions relay, the current champion's logo flares gold
+  let champKeyNow: string | null = null;
+  if (frame >= HOPS_START && frame < EMERALD_AT) {
+    const raw = (frame - HOPS_START) / PER_HOP;
+    const hi = Math.max(0, Math.min(19, Math.floor(raw)));
+    if (raw - hi >= 0.65 || raw >= 19.65) champKeyNow = CHAMP_STOPS[hi].key;
+  }
 
   return (
     <AbsoluteFill style={{ background: `radial-gradient(ellipse at 50% 40%, ${NAVY} 0%, ${NAVY_DEEP} 78%)` }}>
@@ -222,7 +229,8 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             const [lx, ly] = bez(draw, CH, ctrl, end);
             const landed = draw >= 1;
             const isActive = activeIdx === st.order;
-            const logoR = (landed ? 20 : 15) / Math.sqrt(cam.s);
+            const isChampNow = champKeyNow === st.key;
+            const logoR = (landed ? (isChampNow ? 28 : 20) : 15) / Math.sqrt(cam.s);
             return (
               <g key={st.key}>
                 <path
@@ -250,7 +258,13 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                   <clipPath id={`clip-${st.key}`}>
                     <circle r={logoR} />
                   </clipPath>
-                  <circle r={logoR + 1.6 / Math.sqrt(cam.s)} fill={NAVY_DEEP} stroke={isActive ? WHITE : CAROLINA} strokeWidth={1.4 / Math.sqrt(cam.s)} />
+                  <circle
+                    r={logoR + 1.6 / Math.sqrt(cam.s)}
+                    fill={NAVY_DEEP}
+                    stroke={isChampNow ? GOLD : isActive ? WHITE : CAROLINA}
+                    strokeWidth={(isChampNow ? 2.4 : 1.4) / Math.sqrt(cam.s)}
+                    style={isChampNow ? { filter: `drop-shadow(0 0 ${10 / Math.sqrt(cam.s)}px ${GOLD})` } : undefined}
+                  />
                   <image
                     href={staticFile(`logos/${st.key.toLowerCase()}.png`)}
                     x={-logoR}
@@ -264,41 +278,57 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             );
           })}
 
-          {/* trophy tour: the plaque hops champion to champion, 2006 -> 2025 */}
+          {/* champions relay: a comet streak carries the title city to city;
+              each landing flares the champion's logo gold (rings drawn here,
+              the logo swell happens in the logo loop above via champKeyNow) */}
           {frame >= HOPS_START - 10 && frame < TOUR_END + 40 && (() => {
             const raw = (frame - HOPS_START) / PER_HOP;
             const hopIdx = Math.max(0, Math.min(19, Math.floor(raw)));
             const from = hopIdx === 0 ? { x: CH[0], y: CH[1] } : CHAMP_STOPS[hopIdx - 1];
             const to = CHAMP_STOPS[hopIdx];
-            // travel for the first 65% of the hop, rest is a landing pause
-            const hopP = raw <= 0 ? 0 : Math.min(1, (raw - hopIdx) / 0.65);
+            // travel for the first 65% of the hop, rest is the landing flare
+            const frac = raw <= 0 ? 0 : raw - hopIdx;
+            const hopP = Math.min(1, frac / 0.65);
             const eased = Easing.inOut(Easing.quad)(Math.max(0, hopP));
             const ctrl: [number, number] = [
               (from.x + to.x) / 2,
               Math.min(from.y, to.y) - Math.max(50, Math.hypot(to.x - from.x, to.y - from.y) * 0.3),
             ];
-            const [px2, py2] = bez(eased, [from.x, from.y], ctrl, [to.x, to.y]);
             const landed = hopP >= 1 || raw >= 19.65;
             const done = frame >= EMERALD_AT;
-            const at = done ? CHAMP_STOPS[19] : { x: px2, y: py2 };
             const k = 1 / Math.sqrt(cam.s);
+            const trail: [number, number][] = [];
+            if (!landed && !done) {
+              for (let j = 0; j < 10; j++) {
+                const tp = Math.max(0, eased - j * 0.05);
+                trail.push(bez(tp, [from.x, from.y], ctrl, [to.x, to.y]));
+              }
+            }
+            const flareP = Math.min(1, Math.max(0, (frac - 0.65) / 0.35)); // 0..1 during the pause
             return (
               <g>
+                {/* comet + trail */}
+                {trail.map(([tx, ty], j) => (
+                  <circle
+                    key={j}
+                    cx={tx}
+                    cy={ty}
+                    r={Math.max(1.2, 7.5 - j * 0.62) * k}
+                    fill={j === 0 ? WHITE : CAROLINA_LIGHT}
+                    opacity={j === 0 ? 1 : 0.55 * (1 - j / 10)}
+                    style={j === 0 ? { filter: `drop-shadow(0 0 ${8 * k}px ${CAROLINA_LIGHT})` } : undefined}
+                  />
+                ))}
+                {/* landing flare: expanding gold rings on the champion's city */}
                 {landed && !done && (
-                  <circle cx={to.x} cy={to.y} r={(24 + 8 * Math.sin(frame / 4)) * k} fill="none" stroke="#e8c15a" strokeWidth={1.6 * k} opacity={0.8} />
+                  <>
+                    <circle cx={to.x} cy={to.y} r={(16 + flareP * 40) * k} fill="none" stroke={GOLD}
+                      strokeWidth={2.4 * (1 - flareP) * k} opacity={1 - flareP} />
+                    <circle cx={to.x} cy={to.y} r={(10 + flareP * 22) * k} fill="none" stroke={WHITE}
+                      strokeWidth={1.5 * (1 - flareP) * k} opacity={0.8 * (1 - flareP)} />
+                  </>
                 )}
-                {/* golden mini-plaque */}
-                <g transform={`translate(${at.x} ${at.y})`}>
-                  <rect x={-34 * k} y={-15 * k} width={68 * k} height={30 * k} rx={4 * k}
-                    fill="#e8c15a" stroke="#8a723f" strokeWidth={1.2 * k}
-                    style={{ filter: "drop-shadow(0 0 10px rgba(232,193,90,.9))" }} />
-                  <text y={6 * k} textAnchor="middle"
-                    style={{ fontFamily: "Georgia, serif", fontWeight: 700 }}
-                    fontSize={17 * k} fill="#241a0c">
-                    {done ? 2025 : CHAMP_STOPS[hopIdx].year}
-                  </text>
-                </g>
-                {/* Emerald Isle: the plaque has never been */}
+                {/* Emerald Isle: the title has never been */}
                 {frame >= EMERALD_AT + 45 && (
                   <circle
                     cx={BYRD_PT.x}
