@@ -369,6 +369,10 @@ function renderSetup() {
     <h2>Setup <a href="#home" style="float:right;color:var(--muted)">home</a></h2>
     <div class="row"><input type="password" id="pin" placeholder="PIN (default 0000)" value="${esc(S.pin)}" style="width:150px"></div>
     <h2 style="margin-top:12px">Teams & budgets</h2>
+    <div class="note" style="margin-bottom:6px">2026 budgets after draft-dollar trades:
+      Lesesne <b>600</b> · Crisp <b>560</b> · Ned <b>545</b> · Singer/Kevin/Rob <b>500</b> ·
+      Farmer <b>490</b> · Omar <b>465</b> · Byrd <b>440</b> · Link <b>400</b>.
+      Enter keepers before the auction with the <b>keeper</b> checkbox — they hit budgets but skip nomination.</div>
     <div class="row"><span class="note" style="width:60px">Nom. #</span>
       <span class="note" style="flex:1">Team</span><span class="note" style="width:90px">Budget</span></div>
     ${S.board.teams.map(t => `
