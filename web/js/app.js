@@ -428,7 +428,7 @@ function paintCard() {
     <div class="big-vals">
       <div class="bigval hero"><div class="n">${money(a.suggested_max_bid)}</div><div class="l">my max bid</div></div>
       <div class="bigval"><div class="n">$${p.target_low}–$${p.target_high}</div><div class="l">target range</div></div>
-      <div class="bigval"><div class="n">${money(p.expected_price)}</div><div class="l">room will pay</div></div>
+      <div class="bigval"><div class="n">${money(p.expected_live ?? p.expected_price)}</div><div class="l">room will pay${p.expected_live != null && Math.abs(p.expected_live - p.expected_price) >= 2 ? " (live)" : ""}</div></div>
       <div class="bigval"><div class="n">${money(a.adj_value)}</div><div class="l">adj value</div></div>
       <div class="bigval"><div class="n">${money(a.value)}</div><div class="l">fair value</div></div>
       <div class="bigval"><div class="n">${money(a.hard_max_bid)}</div><div class="l">hard cap</div></div>
@@ -776,7 +776,8 @@ async function paintPlayersTable() {
   rows = rows.slice().sort((x, y) => (((x[key] == null ? -1e9 : x[key]) < (y[key] == null ? -1e9 : y[key])) ? 1 : -1) * dir);
   $("#pcount").textContent = `${rows.length} players · inflation ${r.inflation.toFixed(2)}×`;
   const TH = [["overall_rank", "#"], ["name", "Player"], ["position", "Pos"], ["team", "Tm"], ["tier", "Tier"],
-    ["points", "Pts"], ["vorp", "VORP"], ["model_value", "Model$"], ["market_value", "Mkt$"], ["value", "Value"], ["adj_value", "Adj$"]];
+    ["points", "Pts"], ["vorp", "VORP"], ["model_value", "Model$"], ["market_value", "Mkt$"], ["value", "Value"],
+    ["expected_price", "Room$"], ["adj_value", "Adj$"]];
   $("#ptable").innerHTML = `<table><tr>${TH.map(([k, l]) =>
     `<th class="${k !== "name" && k !== "position" && k !== "team" ? "r" : ""}" data-k="${k}">${l}${pf.sort === k ? (dir < 0 ? " ↓" : " ↑") : ""}</th>`).join("")}</tr>` +
     rows.slice(0, 250).map(p => `
@@ -791,6 +792,7 @@ async function paintPlayersTable() {
         <td class="r dim">${money(p.model_value)}</td>
         <td class="r dim">${p.market_value != null ? money(p.market_value) : "—"}</td>
         <td class="r">${money(p.value)}</td>
+        <td class="r" title="what this room will pay (elite premium + live heat)">${p.expected_live != null ? money(p.expected_live) : p.expected_price != null ? money(p.expected_price) : "—"}</td>
         <td class="r money">${p.adj_value != null ? money(p.adj_value) : "—"}</td>
       </tr>`).join("") + `</table>`;
   $$("#ptable th").forEach(h => (h.onclick = () => {
