@@ -63,7 +63,7 @@ ROSTERS = {
   "Devin Singletary", "Chris Godwin", "Chris Rodriguez Jr.",
  ],
  "Lesesne": [
-  "Jared Goff", "Travis Etienne Jr.", "Bam Knight", "Jaylen Waddle",
+  "Jared Goff", "Travis Etienne Jr.", "Zonovan Knight", "Jaylen Waddle",
   "Wan'Dale Robinson", "George Kittle", "Rhamondre Stevenson", "Jaguars D/ST",
   "Jake Elliott", "Tee Higgins", "Baker Mayfield", "Keenan Allen",
   "Tyrone Tracy Jr.", "Xavier Worthy", "Kyle Pitts", "J.K. Dobbins",
