@@ -264,52 +264,51 @@ def manager_profiles():
 def _keeper_candidates(cfg, by_id, by_name):
     """Per team: keeper-eligible players with cost = last price + surcharge.
 
-    In this league keeper RIGHTS follow the player — trades move them (the
-    ledger is full of '$X draft dollars for D. Achane' deals) — so once ESPN
-    rosters are synced, eligibility comes from the CURRENT roster and the
-    price from last year's draft row regardless of who drafted him. Rostered
-    players who went undrafted last year (waiver adds) are included at just
-    the surcharge, flagged so the cost is easy to question at the table.
-    Without a roster sync we fall back to last year's draft rows per team.
+    League rule: a keeper must have been DRAFTED last year and stayed rostered
+    all season — drops and waiver adds are ineligible. Rights move across
+    teams only via real trades (trade_ledger.RIGHTS_MOVES_2025). So with ESPN
+    rosters synced we scrub last year's draft against ending rosters: a
+    drafted player is eligible for his expected owner (drafting team, or the
+    trade destination) only if he's actually on that roster. Without a roster
+    sync we fall back to draft rows alone.
     """
+    from . import trade_ledger
     hist = db.history(cfg["season"] - 1)
     out = {t["id"]: [] for t in db.teams()}
 
-    def entry(player, price, waiver=False):
+    def entry(player, price):
         cost = price + cfg["keeper_surcharge"]
         return {
             "player": player,
             "last_price": price,
             "keeper_cost": cost,
             "surplus": round(player["value"] - cost, 1),
-            "waiver": waiver,
         }
 
-    price_of = {}
+    roster_active = db.meta_get("roster_source") == "espn"
+    on_roster = {}
+    if roster_active:
+        for r in db.rosters():
+            on_roster[r["player_id"]] = r["team_id"]
+
+    tidx = _team_index() if roster_active else {}
+    moves = {norm_name(k): v for k, v in trade_ledger.RIGHTS_MOVES_2025.items()}
+
     for h in hist:
         player = by_id.get(h["player_id"]) if h["player_id"] else None
         if player is None:
             player = by_name.get(norm_name(h["player_name"]))
-        if player is not None:
-            price_of[player["id"]] = (h["price"], h["team_id"])
-
-    roster_rows = db.rosters() if db.meta_get("roster_source") == "espn" else []
-    if roster_rows:
-        for r in roster_rows:
-            player = by_id.get(r["player_id"])
-            if player is None or player["position"] in ("DST", "K"):
-                continue
-            hit = price_of.get(player["id"])
-            out.setdefault(r["team_id"], []).append(
-                entry(player, hit[0] if hit else 0, waiver=hit is None))
-    else:
-        for h in hist:
-            player = by_id.get(h["player_id"]) if h["player_id"] else None
-            if player is None:
-                player = by_name.get(norm_name(h["player_name"]))
-            if player is None:
-                continue
-            out.setdefault(h["team_id"], []).append(entry(player, h["price"]))
+        if player is None or player["position"] in ("DST", "K"):
+            continue
+        expected = h["team_id"]
+        move_alias = moves.get(norm_name(h["player_name"]))
+        if move_alias:
+            moved_to = _match_team(move_alias, tidx) if roster_active else None
+            if moved_to is not None:
+                expected = moved_to
+        if roster_active and on_roster.get(player["id"]) != expected:
+            continue  # dropped mid-season (or moved without a logged trade) — ineligible
+        out.setdefault(expected, []).append(entry(player, h["price"]))
     for tid in out:
         out[tid].sort(key=lambda c: c["surplus"], reverse=True)
     return out

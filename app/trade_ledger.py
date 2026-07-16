@@ -100,3 +100,19 @@ TRADES = {
 # Net 2026 auction-budget adjustments implied by the 2025-season trades above.
 BUDGET_2026 = {"Lesesne": 100, "Link": -100, "Crisp": 60, "Byrd": -60,
                "Ned": 45, "Omar": -35, "Farmer": -10}
+
+# Keeper RIGHTS that legitimately moved via 2025 trades (player -> new owner
+# alias). Keeper rule: drafted AND rostered all year — drops/waiver adds are
+# ineligible — so cross-team eligibility exists ONLY through these trades.
+RIGHTS_MOVES_2025 = {
+    "Chris Olave": "Nova",
+    "Bhayshul Tuten": "Byrd",
+    "Saquon Barkley": "Link",
+    "Davante Adams": "Link",
+    "Xavier Worthy": "Lesesne",
+    "Rashid Shaheed": "Lesesne",
+    "Ja'Marr Chase": "Byrd",
+    "A.J. Brown": "Crisp",
+    "Derrick Henry": "Omar",
+    "Kyle Monangai": "Farmer",
+}
