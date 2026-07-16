@@ -539,7 +539,8 @@ async function renderStrategy(gen) {
     ? `<div class="note">Across your <b>${st.temperament.seasons.join(", ")}</b> draft${st.temperament.seasons.length > 1 ? "s (recent years weighted heavier)" : ""},
        this room put <b>${st.temperament.actual_top10_share}%</b> of all money into its top 10 prices
        (top 20: <b>${st.temperament.actual_top20_share}%</b>, ${st.temperament.sample} sales). Best-fit elite premium: <b>${(st.temperament.estimated_premium * 100).toFixed(0)}%</b>
-       (currently modeled at ${(st.elite_premium * 100).toFixed(0)}%).</div>
+       (currently modeled at ${(st.elite_premium * 100).toFixed(0)}%).${st.temperament.capped ? " <b style='color:var(--amber)'>Fit hit the search ceiling — the room may be even hotter.</b>" : ""}
+       Loading a market-AAV CSV closer to the draft steepens the base value curve and usually pulls this number down.</div>
        ${Math.abs(st.temperament.estimated_premium - st.elite_premium) > 0.03
          ? `<div class="formrow"><button class="btn primary" id="applyPrem">Apply ${(st.temperament.estimated_premium * 100).toFixed(0)}% premium to the model</button></div>` : ""}`
     : `<div class="note">Import last year's draft prices (Data &amp; Setup) and I'll measure exactly how hard this room overpays

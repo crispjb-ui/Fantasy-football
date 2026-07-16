@@ -257,13 +257,13 @@ def calibrate_premium(valued_pool, cfg):
     # Recency-weighted blend across every imported draft (2022-24 etc.):
     # newer seasons count more, but three drafts beat one for stability.
     seasons = sorted(usable, reverse=True)
-    actual, wsum = {10: 0.0, 20: 0.0}, 0.0
+    actual, wsum = {1: 0.0, 10: 0.0, 20: 0.0}, 0.0
     for i, s in enumerate(seasons):
         prices = sorted(usable[s], reverse=True)
         spend = sum(prices) or 1
         w = 0.6 ** i
         wsum += w
-        for k in (10, 20):
+        for k in actual:
             actual[k] += w * sum(prices[:k]) / spend
     for k in actual:
         actual[k] /= wsum
@@ -272,17 +272,24 @@ def calibrate_premium(valued_pool, cfg):
 
     values = sorted((p["value"] for p in valued_pool), reverse=True)[:n_rows]
     vmax = values[0] if values else 1.0
+    # Grid to 150%: real rooms (this one included) can concentrate a third of
+    # all money in ten players, which a 60% cap could not express — the old
+    # fit rode the cap and silently understated the heat. The top-1 share is
+    # in the error so the fit can't buy top-10 breadth by spiking the single
+    # max price beyond anything the room has ever actually paid.
     best, best_err = 0.0, 1e9
-    for step in range(0, 31):
+    for step in range(0, 76):
         prem = step * 0.02
         adj = [v * (1 + prem * (v / vmax) ** 2) for v in values]
         tot = sum(adj) or 1
-        err = sum(abs(sum(adj[:k]) / tot - actual[k]) for k in (10, 20))
+        err = sum(abs(sum(adj[:k]) / tot - actual[k]) for k in actual)
         if err < best_err:
             best, best_err = prem, err
     return {
         "estimated_premium": round(best, 2),
+        "capped": best >= 1.5,
         "current_setting": cfg.get("elite_premium", 0),
+        "actual_top1_share": round(actual[1] * 100, 1),
         "actual_top10_share": round(actual[10] * 100, 1),
         "actual_top20_share": round(actual[20] * 100, 1),
         "sample": sample,
