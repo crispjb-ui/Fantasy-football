@@ -95,7 +95,15 @@ const serif: React.CSSProperties = {
   textAlign: "center",
 };
 
-const Caption: React.FC<{ from: number; to: number; children: React.ReactNode }> = ({ from, to, children }) => {
+const GOLD = "#e8c15a";
+
+/* Lower-third callout: dark pill so it never washes out over the gold plates. */
+const Caption: React.FC<{ from: number; to: number; label?: string; children: React.ReactNode }> = ({
+  from,
+  to,
+  label,
+  children,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   if (frame < from || frame > to + 20) return null;
@@ -108,19 +116,33 @@ const Caption: React.FC<{ from: number; to: number; children: React.ReactNode }>
     <div
       style={{
         position: "absolute",
-        bottom: 52,
+        bottom: 44,
         width: "100%",
         textAlign: "center",
-        ...serif,
-        fontSize: 32,
-        letterSpacing: 3,
-        color: WHITE,
         opacity: s * out,
-        textShadow: "0 2px 26px #000, 0 2px 60px #000",
-        padding: "0 120px",
+        transform: `translateY(${(1 - s) * 30}px)`,
       }}
     >
-      {children}
+      <div
+        style={{
+          display: "inline-block",
+          maxWidth: 1560,
+          padding: "22px 52px",
+          borderRadius: 16,
+          background: "rgba(5, 4, 2, 0.88)",
+          border: `2px solid ${GOLD}66`,
+          boxShadow: "0 12px 60px rgba(0,0,0,.8)",
+        }}
+      >
+        {label && (
+          <div style={{ ...serif, fontSize: 30, letterSpacing: 5, color: GOLD, marginBottom: 10 }}>
+            {label}
+          </div>
+        )}
+        <div style={{ ...serif, fontSize: 34, letterSpacing: 2, color: WHITE, lineHeight: 1.4 }}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 };
@@ -147,32 +169,41 @@ export const Plaque: React.FC = () => {
         <div
           style={{
             position: "absolute",
-            top: 46,
+            top: 40,
             width: "100%",
             textAlign: "center",
-            ...serif,
-            fontSize: 40,
-            letterSpacing: 12,
-            color: CAROLINA,
             opacity: head * interpolate(frame, [120, 145], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
-            textShadow: "0 2px 26px #000",
           }}
         >
-          THE PLAQUE DOESN'T LIE.
+          <div
+            style={{
+              display: "inline-block",
+              padding: "14px 44px",
+              borderRadius: 14,
+              background: "rgba(5, 4, 2, 0.82)",
+              border: `2px solid ${CAROLINA}55`,
+              ...serif,
+              fontSize: 42,
+              letterSpacing: 12,
+              color: CAROLINA,
+            }}
+          >
+            THE PLAQUE DOESN'T LIE.
+          </div>
         </div>
       )}
-      <Caption from={230} to={415}>
-        * 2006 — THE AUTOPILOT: LESESNE SKIPPED THE DRAFT. AUTOPICK HANDED HIM LT &amp; BREES.
+      <Caption from={230} to={415} label="* 2006 · THE AUTOPILOT">
+        LESESNE SKIPPED THE DRAFT. AUTOPICK HANDED HIM LT &amp; BREES.
         <br />
         HE WON THE WHOLE THING.
       </Caption>
-      <Caption from={450} to={635}>
-        * 2022 — THE CONCESSION: UP BY LESS THAN A POINT WHEN THE HAMLIN GAME WAS SUSPENDED,
+      <Caption from={450} to={635} label="* 2022 · THE CONCESSION">
+        UP BY LESS THAN A POINT WHEN THE HAMLIN GAME WAS SUSPENDED,
         <br />
         SINGER HANDED KEVIN THE RING.
       </Caption>
       <Caption from={670} to={800}>
-        <span style={{ color: CAROLINA, fontSize: 38 }}>ONE PLATE GETS ENGRAVED THIS YEAR.</span>
+        <span style={{ color: CAROLINA, fontSize: 40 }}>ONE PLATE GETS ENGRAVED THIS YEAR.</span>
       </Caption>
     </AbsoluteFill>
   );

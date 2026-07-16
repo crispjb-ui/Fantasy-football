@@ -238,19 +238,22 @@ const LastYear: React.FC = () => {
           );
         })}
       </div>
-      <div
-        style={{
-          ...font,
-          position: "absolute",
-          bottom: 46,
-          width: "100%",
-          fontSize: 40,
-          letterSpacing: 5,
-          color: capColor,
-          textShadow: "0 2px 24px #000",
-        }}
-      >
-        {caption}
+      <div style={{ position: "absolute", bottom: 40, width: "100%", textAlign: "center" }}>
+        <div
+          style={{
+            ...font,
+            display: "inline-block",
+            padding: "14px 44px",
+            borderRadius: 14,
+            background: "rgba(4, 9, 18, 0.85)",
+            border: `2px solid ${capColor === WHITE ? CAROLINA : capColor}66`,
+            fontSize: 42,
+            letterSpacing: 5,
+            color: capColor,
+          }}
+        >
+          {caption}
+        </div>
       </div>
     </AbsoluteFill>
   );
@@ -385,19 +388,22 @@ const FinalCountdown: React.FC = () => {
       >
         {num}
       </div>
-      <div
-        style={{
-          ...font,
-          position: "absolute",
-          bottom: 90,
-          width: "100%",
-          fontSize: 34,
-          letterSpacing: 8,
-          color: CAROLINA_LIGHT,
-          opacity: s,
-        }}
-      >
-        {row.manager.toUpperCase()} · ALL-TIME #{num}
+      <div style={{ position: "absolute", bottom: 80, width: "100%", textAlign: "center", opacity: s }}>
+        <div
+          style={{
+            ...font,
+            display: "inline-block",
+            padding: "12px 40px",
+            borderRadius: 12,
+            background: "rgba(4, 9, 18, 0.85)",
+            border: `2px solid ${CAROLINA}55`,
+            fontSize: 36,
+            letterSpacing: 8,
+            color: CAROLINA_LIGHT,
+          }}
+        >
+          {row.manager.toUpperCase()} · ALL-TIME #{num}
+        </div>
       </div>
     </AbsoluteFill>
   );

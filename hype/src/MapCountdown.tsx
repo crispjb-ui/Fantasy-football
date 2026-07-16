@@ -514,44 +514,57 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         const hopIdx = Math.max(0, Math.min(19, Math.floor((frame - HOPS_START) / PER_HOP)));
         const c = CHAMP_STOPS[hopIdx];
         return (
-          <div
-            style={{
-              ...font,
-              position: "absolute",
-              bottom: 64,
-              width: "100%",
-              textAlign: "center",
-              fontSize: 46,
-              letterSpacing: 6,
-              color: WHITE,
-              textShadow: "0 2px 24px #000",
-            }}
-          >
-            <span style={{ color: GOLD }}>{c.year}</span>
-            &nbsp;&nbsp;{c.team.toUpperCase()}
-            <span style={{ color: CAROLINA_LIGHT }}>&nbsp;&nbsp;· {c.manager.toUpperCase()}</span>
+          <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center" }}>
+            <div
+              style={{
+                ...font,
+                display: "inline-block",
+                padding: "16px 46px",
+                borderRadius: 14,
+                background: `${NAVY_DEEP}e0`,
+                border: `2px solid ${GOLD}55`,
+                boxShadow: "0 10px 50px rgba(0,0,0,.7)",
+                fontSize: 48,
+                letterSpacing: 6,
+                color: WHITE,
+              }}
+            >
+              <span style={{ color: GOLD }}>{c.year}</span>
+              &nbsp;&nbsp;{c.team.toUpperCase()}
+              <span style={{ color: CAROLINA_LIGHT }}>&nbsp;&nbsp;· {c.manager.toUpperCase()}</span>
+            </div>
           </div>
         );
       })()}
       {frame >= EMERALD_AT + 55 && frame < TOUR_END + 20 && (
         <div
           style={{
-            ...font,
             position: "absolute",
-            bottom: 64,
+            bottom: 54,
             width: "100%",
             textAlign: "center",
-            fontSize: 44,
-            letterSpacing: 5,
-            color: RED_ISH,
             opacity: interpolate(frame, [EMERALD_AT + 55, EMERALD_AT + 75], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             }),
-            textShadow: "0 2px 24px #000",
           }}
         >
-          20 YEARS. NEVER ONCE IN EMERALD ISLE.
+          <div
+            style={{
+              ...font,
+              display: "inline-block",
+              padding: "16px 46px",
+              borderRadius: 14,
+              background: `${NAVY_DEEP}e0`,
+              border: `2px solid ${RED_ISH}77`,
+              boxShadow: `0 10px 50px rgba(0,0,0,.7), 0 0 40px ${RED_ISH}33`,
+              fontSize: 46,
+              letterSpacing: 5,
+              color: RED_ISH,
+            }}
+          >
+            20 YEARS. NEVER ONCE IN EMERALD ISLE.
+          </div>
         </div>
       )}
 
