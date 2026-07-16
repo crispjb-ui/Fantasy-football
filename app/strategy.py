@@ -355,12 +355,19 @@ def _keeper_candidates(cfg, by_id, by_name):
     out = {t["id"]: [] for t in db.teams()}
 
     def entry(player, price):
+        # Surplus is measured against what THIS room would pay (expected_price,
+        # elite premium included), not fair value: letting an elite keeper go
+        # means buying him back at the room's inflated price, while mid-tier
+        # players can be re-bought at a discount. Fair value alone flips the
+        # math against exactly the keepers that matter.
         cost = price + cfg["keeper_surcharge"]
+        room = player.get("expected_price") or player["value"]
         return {
             "player": player,
             "last_price": price,
             "keeper_cost": cost,
-            "surplus": round(player["value"] - cost, 1),
+            "room_price": round(room),
+            "surplus": round(room - cost, 1),
         }
 
     roster_active = db.meta_get("roster_source") == "espn"

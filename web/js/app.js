@@ -531,7 +531,7 @@ async function renderStrategy(gen) {
     <div class="result-row">
       <span class="pos pos-${c.player.position}">${c.player.position}</span>
       <span class="nm">${esc(c.player.name)}
-        <span class="meta">worth ${money(c.player.value)} · keeps at ${money(c.keeper_cost)} (was ${money(c.last_price)})</span></span>
+        <span class="meta">worth ${money(c.player.value)}${c.room_price ? ` · room pays ~${money(c.room_price)}` : ""} · keeps at ${money(c.keeper_cost)} (was ${money(c.last_price)})</span></span>
       <span class="val" style="color:${c.surplus > 0 ? "var(--green)" : "var(--red)"}">${c.surplus > 0 ? "+" : ""}${money(c.surplus).replace("$-", "-$")}</span>
     </div>`;
 
@@ -823,7 +823,7 @@ async function renderKeepers(gen) {
     <div class="result-row" style="${keep ? "border-left:3px solid var(--green)" : ""}">
       <span class="pos pos-${c.player.position}">${c.player.position}</span>
       <span class="nm">${esc(c.player.name)}${keep ? ' <span class="tag" style="color:var(--green)">KEEP</span>' : ""}
-        <span class="meta">worth ${money(c.player.value)} · keeps at ${money(c.keeper_cost)} (was ${money(c.last_price)})</span></span>
+        <span class="meta">worth ${money(c.player.value)}${c.room_price ? ` · room pays ~${money(c.room_price)}` : ""} · keeps at ${money(c.keeper_cost)} (was ${money(c.last_price)})</span></span>
       <span class="val">${surplusSpan(c.surplus)}</span>
       <span style="margin-left:8px">${lockBtn(c, tid)}</span>
     </div>`;
@@ -855,7 +855,7 @@ async function renderKeepers(gen) {
       ${k.forfeited.length ? `<div class="note" style="color:var(--amber)">Forced to give back:</div>`
         + k.forfeited.map(c => `
           <div class="result-row"><span class="pos pos-${c.player.position}">${c.player.position}</span>
-            <span class="nm">${esc(c.player.name)} <span class="meta">worth ${money(c.player.value)} · would keep at ${money(c.keeper_cost)}</span></span>
+            <span class="nm">${esc(c.player.name)} <span class="meta">worth ${money(c.player.value)}${c.room_price ? ` · room pays ~${money(c.room_price)}` : ""} · would keep at ${money(c.keeper_cost)}</span></span>
             <span class="val">${surplusSpan(c.surplus)}</span></div>`).join("") : ""}
     </div>`).join("");
 

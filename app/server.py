@@ -481,7 +481,8 @@ def api_strategy(q, body):
 
     def slim_cand(c):
         return {"player": _slim(c["player"]), "last_price": c["last_price"],
-                "keeper_cost": c["keeper_cost"], "surplus": c["surplus"]}
+                "keeper_cost": c["keeper_cost"], "room_price": c.get("room_price"),
+                "surplus": c["surplus"]}
 
     return {
         "temperament": temperament,
