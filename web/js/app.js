@@ -148,6 +148,10 @@ async function renderDraft(gen) {
   if (stale(gen)) return;
   renderChips();
   $("#view").innerHTML = `
+  <div class="panel" style="padding:10px 14px;margin-bottom:12px">
+    <span class="hint dim" style="margin-right:10px">CHAMPION SHAPE</span>
+    <span id="checkpoints"></span>
+  </div>
   <div class="cols draft-grid">
     <div>
       <div class="panel">
@@ -218,6 +222,41 @@ function paintDraftPanels() {
   const d = S.draft;
   if (!d || S.view !== "draft") return;
   const me = d.teams.find(t => t.is_me) || d.teams[0];
+
+  // strategy checkpoints — the shape every champion's draft had (STRATEGY_2026.md)
+  const rosterSize = (S.app.config && S.app.config.roster_size) || 15;
+  const myPicks = d.picks.filter(p => p.team_id === me.id);
+  const anchors = myPicks.filter(p => p.price >= 60).length;
+  const qbAnchor = myPicks.some(p => p.player && p.player.position === "QB" && p.price >= 40);
+  const qbCheap = myPicks.some(p => p.player && p.player.position === "QB" && p.price < 40);
+  const teSpend = myPicks.filter(p => p.player && p.player.position === "TE")
+    .reduce((s, p) => s + p.price, 0);
+  const sold = d.picks.length;
+  const totalSlots = d.teams.length * rosterSize;
+  const pastHalf = sold >= totalSlots / 2;
+  const leagueOpen = totalSlots - sold;
+  const lateForAnchors = me.slots_left <= 6;
+  const cp = (label, state, title) =>
+    `<span class="chip ${state === true ? "good" : state === false ? "bad" : ""}" title="${esc(title || "")}">${label}</span>`;
+  $("#checkpoints").innerHTML = [
+    cp(`Anchors ≥$60: <b>${anchors}/4</b>`,
+       anchors >= 4 ? true : lateForAnchors ? false : undefined,
+       "Champions averaged 3.6 players at $60+ — the strongest winning signal in 5 drafts"),
+    cp(`QB anchor: <b>${qbAnchor ? "✓" : qbCheap ? "punted" : "open"}</b>`,
+       qbAnchor ? true : qbCheap ? false : undefined,
+       "Top-2 QB at $40-85 — the room's biggest market inefficiency"),
+    cp(`TE ≤$15: <b>${money(teSpend)}</b>`, teSpend <= 15,
+       "Champions spent ~3% at TE — don't pay the tax"),
+    cp(pastHalf
+         ? `Reserve @half: <b>${money(me.budget_left)}</b> / $120`
+         : `Reserve: <b>${money(me.budget_left)}</b> <span class="dim">(≥$120 at halfway)</span>`,
+       pastHalf ? me.budget_left >= 120 : undefined,
+       "Budgets die mid-draft — arrive at the back half with money"),
+    leagueOpen <= 30
+      ? cp(`Endgame ≥$25: <b>${money(me.budget_left)}</b>`, me.budget_left >= 25,
+           "When the room is down to $1 bids, your leftover $25 owns every dart")
+      : "",
+  ].join(" ");
 
   // teams board
   $("#teamsBoard").innerHTML =
