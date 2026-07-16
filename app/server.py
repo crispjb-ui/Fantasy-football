@@ -486,6 +486,7 @@ def api_strategy(q, body):
     return {
         "temperament": temperament,
         "profiles": strategy.manager_profiles(),
+        "roster_scrub": db.meta_get("roster_source") == "espn",
         "elite_premium": cfg.get("elite_premium", 0),
         "history_rows": len(db.history(cfg["season"] - 1)),
         "history_total": len(db.history()),

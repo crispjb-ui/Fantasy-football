@@ -805,18 +805,101 @@ async function paintPlayersTable() {
 /* ---------- keepers ---------- */
 
 async function renderKeepers(gen) {
-  await loadDraft();
+  const [, st] = await Promise.all([loadDraft(), api("/api/strategy")]);
   if (stale(gen)) return;
   const cfg = S.app.config;
   const d = S.draft;
   const keeperPicks = d.picks.filter(p => p.is_keeper);
+  const lockedIds = new Set(keeperPicks.map(pk => pk.player_id));
+  const hasHistory = st.history_rows > 0;
+  const me = st.keepers.find(k => k.is_me);
+  const rivals = st.keepers.filter(k => !k.is_me);
+
+  const surplusSpan = s => `<span style="color:${s > 0 ? "var(--green)" : "var(--red)"}">${s > 0 ? "+" : ""}${money(s).replace("$-", "-$")}</span>`;
+  const lockBtn = (c, tid) => lockedIds.has(c.player.id)
+    ? `<span class="tag">locked 🔒</span>`
+    : `<button class="btn small" data-lock="${esc(c.player.id)}" data-lteam="${tid}" data-lprev="${c.last_price}">lock $${c.keeper_cost}</button>`;
+  const candRow = (c, tid, keep) => `
+    <div class="result-row" style="${keep ? "border-left:3px solid var(--green)" : ""}">
+      <span class="pos pos-${c.player.position}">${c.player.position}</span>
+      <span class="nm">${esc(c.player.name)}${keep ? ' <span class="tag" style="color:var(--green)">KEEP</span>' : ""}
+        <span class="meta">worth ${money(c.player.value)} · keeps at ${money(c.keeper_cost)} (was ${money(c.last_price)})</span></span>
+      <span class="val">${surplusSpan(c.surplus)}</span>
+      <span style="margin-left:8px">${lockBtn(c, tid)}</span>
+    </div>`;
+
+  const scrubNote = st.roster_scrub
+    ? `Eligibility scrubbed against 2025 ending rosters ✓ — drafted <i>and</i> rostered all season
+       (drops/waiver adds excluded; in-season rights trades honored).`
+    : `<b style="color:var(--amber)">Rosters not loaded</b> — showing draft-rows-only eligibility. Load
+       "2025 ending rosters" in Data &amp; Setup to apply the drafted-AND-kept-all-year scrub.`;
+
+  const myHtml = !hasHistory
+    ? `<div class="note">Load the bundled 2021-25 drafts in Data &amp; Setup and the advisor lights up here.</div>`
+    : me
+      ? ((me.candidates.length
+          ? me.candidates.map(c => candRow(c, me.team_id, me.recommended.some(r => r.player.id === c.player.id))).join("")
+          : `<div class="note">No eligible keepers survive the scrub.</div>`)
+        + (me.recommended.length
+          ? `<div class="note" style="margin-top:8px"><b>Verdict:</b> keep ${me.recommended.map(r => `${esc(r.player.name)} at ${money(r.keeper_cost)}`).join(" + ")}
+             — ${surplusSpan(me.recommended.reduce((a, r) => a + r.surplus, 0))} of value vs the room.</div>`
+          : `<div class="note" style="margin-top:8px"><b>Verdict:</b> nobody is worth the price — enter the draft with the full $${cfg.auction_budget}.</div>`))
+      : `<div class="note">Mark your team (★) in Data &amp; Setup first.</div>`;
+
+  const rivalHtml = !hasHistory ? "" : rivals.map(k => `
+    <div style="margin-bottom:12px">
+      <div style="font-weight:600;margin-bottom:4px">${esc(k.team)}</div>
+      ${k.recommended.length
+        ? k.recommended.map(c => candRow(c, k.team_id, true)).join("")
+        : `<div class="note">No keeper worth the price.</div>`}
+      ${k.forfeited.length ? `<div class="note" style="color:var(--amber)">Forced to give back:</div>`
+        + k.forfeited.map(c => `
+          <div class="result-row"><span class="pos pos-${c.player.position}">${c.player.position}</span>
+            <span class="nm">${esc(c.player.name)} <span class="meta">worth ${money(c.player.value)} · would keep at ${money(c.keeper_cost)}</span></span>
+            <span class="val">${surplusSpan(c.surplus)}</span></div>`).join("") : ""}
+    </div>`).join("");
+
+  const tradeHtml = !hasHistory ? `<div class="note">Unlocked by the bundled-draft load.</div>` :
+    (st.trades.note ? `<div class="note">${esc(st.trades.note)}</div>` : "")
+    + (st.trades.targets.length
+      ? `<div class="note" style="margin-bottom:6px"><b>Buy low — they can't keep him anyway:</b></div>`
+        + st.trades.targets.map(t => `
+          <div class="result-row" style="${t.fits_me ? "border-left:3px solid var(--green)" : ""}">
+            <span class="pos pos-${t.player.position}">${t.player.position}</span>
+            <span class="nm">${esc(t.player.name)}${t.fits_me ? ' <span class="tag" style="color:var(--green)">fits you</span>' : ""}
+              <span class="meta">${esc(t.why)}${t.from_rank ? ` Finished #${t.from_rank}.` : ""}</span></span>
+            <span class="val">${surplusSpan(t.surplus)}</span></div>`).join("")
+      : `<div class="note">No forced-forfeit targets around the league.</div>`)
+    + (st.trades.shop.length
+      ? `<div class="note" style="margin:10px 0 6px"><b>Shop these (you can't keep them):</b></div>`
+        + st.trades.shop.map(s => `
+          <div class="result-row"><span class="pos pos-${s.player.position}">${s.player.position}</span>
+            <span class="nm">${esc(s.player.name)} <span class="meta">${esc(s.why)}</span></span>
+            <span class="val">${surplusSpan(s.surplus)}</span></div>`).join("")
+      : "");
+
   $("#view").innerHTML = `
+  <div class="panel">
+    <h2>Keeper advisor — your board</h2>
+    <div class="note" style="margin-bottom:8px">${scrubNote}</div>
+    ${myHtml}
+  </div>
+  <div class="grid2">
+    <div class="panel">
+      <h2>Around the league — best legal keepers per team</h2>
+      ${rivalHtml || `<div class="note">Load the bundled drafts to see every rival's keeper math.</div>`}
+    </div>
+    <div class="panel">
+      <h2>Keeper-rights trade board</h2>
+      ${tradeHtml}
+    </div>
+  </div>
   <div class="grid2">
     <div class="panel">
       <h2>Register a keeper</h2>
       <div class="note" style="margin-bottom:10px">Max ${cfg.max_keepers_per_team} per team, max 1 per position.
         Cost = last year's auction price + $${cfg.keeper_surcharge}. Lock ALL teams' keepers before the draft —
-        it drives budgets and inflation.</div>
+        it drives budgets and inflation. The lock buttons above prefill everything; this form is the manual fallback.</div>
       <div class="formrow"><label>Team</label>
         <select id="kTeam">${d.teams.map(t => `<option value="${t.id}" ${t.id === S.keeperTeam ? "selected" : ""}>${esc(t.name)}${t.is_me ? " ★" : ""}</option>`).join("")}</select></div>
       <div class="formrow"><label>Player</label><input type="text" id="kSearch" placeholder="Search…" autocomplete="off"></div>
@@ -837,6 +920,15 @@ async function renderKeepers(gen) {
       }).join("") + `</table>` : `<div class="note">None yet.</div>`}</div>
     </div>
   </div>`;
+  $$("#view [data-lock]").forEach(b => (b.onclick = async () => {
+    try {
+      const r = await api("/api/keeper", {
+        player_id: b.dataset.lock, team_id: +b.dataset.lteam, prev_price: +b.dataset.lprev,
+      });
+      toast(`Keeper locked at ${money(r.price)}`);
+      setView(S.view);
+    } catch (e) { toast(e.message, true); }
+  }));
   let kSel = null;
   const updateBtn = () => {
     const b = $("#kAdd");

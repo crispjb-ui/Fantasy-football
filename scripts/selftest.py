@@ -702,6 +702,8 @@ check("2026 ledger budgets apply", s == 200 and 600 in r["budgets"].values() and
 r, s = call("GET", "/api/strategy")
 check("keeper advisor runs on bundled rosters", s == 200 and len(r["keepers"]) == 10
       if "keepers" in r else s == 200, str(r)[:80])
+check("strategy reports roster scrub active", r.get("roster_scrub") is True,
+      str(r.get("roster_scrub")))
 
 # --- bundled league history --------------------------------------------------------------
 r, s = call("GET", "/api/league_history")
