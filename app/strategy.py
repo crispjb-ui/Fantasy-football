@@ -123,6 +123,42 @@ def import_standings_csv(text):
     return len(standings)
 
 
+# League UNC team names are distinctive enough to derive the sheet aliases
+# automatically — pattern order matters only where names collide (none do).
+_UNC_ALIAS_PATTERNS = [
+    ("drug runner", "Crisp"),
+    ("poop", "Nova"), ("shoot", "Nova"),
+    ("peaches", "Lesesne"),
+    ("power fade", "Link"), ("p f d", "Link"),
+    ("asians", "Omar"), ("slaying", "Omar"),
+    ("singer", "Singer"),
+    ("expectations", "Rob"), ("grrr", "Rob"),
+    ("harpoon", "Ned"),
+    ("byrd", "Byrd"),
+    ("face", "Farmer"), ("allen", "Farmer"),
+]
+
+
+def ensure_unc_aliases():
+    """Fill in missing team aliases by recognizing League UNC team names, so
+    the bundled loaders work without hand-typing ten aliases. Existing
+    aliases are never overwritten; non-UNC names (Team 1...) are untouched."""
+    aliases = db.meta_get("team_aliases", {}) or {}
+    changed = False
+    for t in db.teams():
+        if (aliases.get(str(t["id"])) or "").strip():
+            continue
+        nm = norm_name(t["name"])
+        for pat, alias in _UNC_ALIAS_PATTERNS:
+            if pat in nm:
+                aliases[str(t["id"])] = alias
+                changed = True
+                break
+    if changed:
+        db.meta_set("team_aliases", aliases)
+    return aliases
+
+
 def load_bundled_drafts():
     """Import the bundled 2021-2025 auction results (app/draft_history.py).
 
@@ -131,6 +167,7 @@ def load_bundled_drafts():
     Keeper flags (2024-25) come along; they're excluded from temperament math.
     """
     from . import draft_history
+    ensure_unc_aliases()
     tidx = _team_index()
     pidx = {}
     for p in db.all_players():
@@ -163,6 +200,7 @@ def load_bundled_rosters():
     which starves the keeper scrub — this restores the ending state. Sets
     roster_source=espn so keeper eligibility, lineups etc. use it."""
     from . import rosters_2025
+    ensure_unc_aliases()
     tidx = _team_index()
     by_name, dst_by_nick = {}, {}
     for p in db.all_players():

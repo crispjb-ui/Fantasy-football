@@ -1010,6 +1010,7 @@ def api_budgets_2026(q, body):
     per-team budgets ($500 base +/- BUDGET_2026 by alias)."""
     from . import trade_ledger
     cfg = db.get_config()
+    strategy.ensure_unc_aliases()
     tidx = strategy._team_index()
     applied = {}
     for t in db.teams():
