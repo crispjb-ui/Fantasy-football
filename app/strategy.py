@@ -157,6 +157,46 @@ def load_bundled_drafts():
     return loaded, skipped[:8]
 
 
+def load_bundled_rosters():
+    """Fill the rosters table with the bundled 2025 season-ending rosters
+    (app/rosters_2025.py). ESPN's API returns empty rosters in the offseason,
+    which starves the keeper scrub — this restores the ending state. Sets
+    roster_source=espn so keeper eligibility, lineups etc. use it."""
+    from . import rosters_2025
+    tidx = _team_index()
+    by_name, dst_by_nick = {}, {}
+    for p in db.all_players():
+        by_name[norm_name(p["name"])] = p
+        if p["position"] == "DST":
+            nick = norm_name(p["name"]).split()
+            if nick:
+                dst_by_nick[nick[-1]] = p
+    rows, skipped = [], []
+    matched_teams = 0
+    for alias, names in rosters_2025.ROSTERS.items():
+        team_id = _match_team(alias, tidx)
+        if team_id is None:
+            skipped.append(f"no team match for alias '{alias}'")
+            continue
+        matched_teams += 1
+        for name in names:
+            player = None
+            if "D/ST" in name:
+                nick = norm_name(name.replace("D/ST", "")).split()
+                player = dst_by_nick.get(nick[-1]) if nick else None
+            else:
+                player = by_name.get(norm_name(name))
+            if player is None:
+                skipped.append(f"{alias}: no player match for '{name}'")
+                continue
+            rows.append((team_id, player["id"]))
+    if matched_teams < 10:
+        raise RuntimeError("Set the manager aliases in Data & Setup first")
+    db.replace_rosters(rows)
+    db.meta_set("roster_source", "espn")
+    return len(rows), skipped[:10]
+
+
 # --- temperament calibration -----------------------------------------------------
 
 def calibrate_premium(valued_pool, cfg):

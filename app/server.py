@@ -998,6 +998,29 @@ def api_history_load_bundled(q, body):
     return {"ok": True, "loaded": loaded, "skipped": skipped}
 
 
+def api_rosters_load_bundled(q, body):
+    """One click: load the bundled 2025 season-ending rosters (keeper scrub
+    fuel — ESPN returns empty rosters in the offseason)."""
+    n, skipped = strategy.load_bundled_rosters()
+    return {"ok": True, "rostered": n, "skipped": skipped}
+
+
+def api_budgets_2026(q, body):
+    """One click: apply the trade-ledger 2026 draft-dollar adjustments to
+    per-team budgets ($500 base +/- BUDGET_2026 by alias)."""
+    from . import trade_ledger
+    cfg = db.get_config()
+    tidx = strategy._team_index()
+    applied = {}
+    for t in db.teams():
+        alias = next((a for a, adj in trade_ledger.BUDGET_2026.items()
+                      if strategy._match_team(a, tidx) == t["id"]), None)
+        budget = cfg["auction_budget"] + (trade_ledger.BUDGET_2026.get(alias, 0) if alias else 0)
+        db.update_team(t["id"], budget=budget)
+        applied[t["name"]] = budget
+    return {"ok": True, "budgets": applied}
+
+
 def api_league_history(q, body):
     """Complete 2006-2025 league history bundled with the app (league_history.py):
     per-season final standings, champions (plaque-verified), and the all-time
@@ -1031,6 +1054,8 @@ ROUTES = {
     ("POST", "/api/keeper"): api_keeper,
     ("POST", "/api/history/import"): api_history_import,
     ("POST", "/api/history/load_bundled"): api_history_load_bundled,
+    ("POST", "/api/rosters/load_bundled"): api_rosters_load_bundled,
+    ("POST", "/api/budgets_2026"): api_budgets_2026,
     ("POST", "/api/standings/import"): api_standings_import,
     ("GET", "/api/strategy"): api_strategy,
     ("POST", "/api/sheet/config"): api_sheet_config,

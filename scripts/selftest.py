@@ -693,6 +693,16 @@ r, s = call("GET", "/api/strategy")
 check("temperament uses all five drafts", r["temperament"] is not None and
       len(r["temperament"]["seasons"]) == 5, str(r.get("temperament"))[:120])
 
+# --- bundled 2025 ending rosters + 2026 budgets -------------------------------------------
+r, s = call("POST", "/api/rosters/load_bundled", {})
+check("bundled rosters load", s == 200 and r["rostered"] >= 100, str(r)[:120])
+r, s = call("POST", "/api/budgets_2026", {})
+check("2026 ledger budgets apply", s == 200 and 600 in r["budgets"].values() and
+      400 in r["budgets"].values(), str(r)[:120])
+r, s = call("GET", "/api/strategy")
+check("keeper advisor runs on bundled rosters", s == 200 and len(r["keepers"]) == 10
+      if "keepers" in r else s == 200, str(r)[:80])
+
 # --- bundled league history --------------------------------------------------------------
 r, s = call("GET", "/api/league_history")
 check("league history serves", s == 200 and r["founded"] == 2006, str(s))

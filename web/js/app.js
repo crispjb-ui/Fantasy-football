@@ -1295,6 +1295,14 @@ async function renderData(gen) {
           <button class="btn primary" id="bundledBtn">Load bundled 2021-2025 drafts</button>
           <span class="note" id="bundledStatus"></span>
         </div>
+        <div class="formrow">
+          <button class="btn" id="rostersBtn">Load 2025 ending rosters</button>
+          <button class="btn" id="budgets26Btn">Apply 2026 budgets (ledger)</button>
+          <span class="note" id="bundled2Status"></span>
+        </div>
+        <div class="note" style="margin-bottom:8px">Rosters power the keeper scrub (ESPN returns empty
+          rosters in the offseason); budgets apply the trade-ledger draft dollars
+          (Lesesne 600 · Crisp 560 · Ned 545 · Farmer 490 · Omar 465 · Byrd 440 · Link 400 · rest 500).</div>
         <div class="note" style="margin:10px 0 8px">Or paste any season's results —
           columns <span class="kbd">Team, Player, Price</span> (Pos optional). Unlocks the keeper advisor,
           trade finder and auto-calibration of how hard your room overpays elites.</div>
@@ -1452,6 +1460,21 @@ async function renderData(gen) {
         (r.skipped.length ? `<br>⚠️ ${r.skipped.map(esc).join("<br>⚠️ ")}` : "");
       await loadApp();
     } catch (e) { $("#bundledStatus").textContent = "❌ " + e.message; }
+  };
+  $("#rostersBtn").onclick = async () => {
+    try {
+      const r = await api("/api/rosters/load_bundled", {});
+      $("#bundled2Status").innerHTML = `✅ ${r.rostered} players rostered.` +
+        (r.skipped.length ? `<br>⚠️ ${r.skipped.map(esc).join("<br>⚠️ ")}` : "");
+      await loadApp();
+    } catch (e) { $("#bundled2Status").textContent = "❌ " + e.message; }
+  };
+  $("#budgets26Btn").onclick = async () => {
+    try {
+      const r = await api("/api/budgets_2026", {});
+      $("#bundled2Status").textContent = "✅ " + Object.entries(r.budgets).map(([n, b]) => `${n} $${b}`).join(" · ");
+      await loadApp();
+    } catch (e) { $("#bundled2Status").textContent = "❌ " + e.message; }
   };
   $("#histBtn").onclick = async () => {
     try {
