@@ -262,22 +262,54 @@ def manager_profiles():
 # --- keeper advisor ---------------------------------------------------------------
 
 def _keeper_candidates(cfg, by_id, by_name):
-    """Per team: last year's roster matched to current values, with keeper cost."""
+    """Per team: keeper-eligible players with cost = last price + surcharge.
+
+    In this league keeper RIGHTS follow the player — trades move them (the
+    ledger is full of '$X draft dollars for D. Achane' deals) — so once ESPN
+    rosters are synced, eligibility comes from the CURRENT roster and the
+    price from last year's draft row regardless of who drafted him. Rostered
+    players who went undrafted last year (waiver adds) are included at just
+    the surcharge, flagged so the cost is easy to question at the table.
+    Without a roster sync we fall back to last year's draft rows per team.
+    """
     hist = db.history(cfg["season"] - 1)
     out = {t["id"]: [] for t in db.teams()}
+
+    def entry(player, price, waiver=False):
+        cost = price + cfg["keeper_surcharge"]
+        return {
+            "player": player,
+            "last_price": price,
+            "keeper_cost": cost,
+            "surplus": round(player["value"] - cost, 1),
+            "waiver": waiver,
+        }
+
+    price_of = {}
     for h in hist:
         player = by_id.get(h["player_id"]) if h["player_id"] else None
         if player is None:
             player = by_name.get(norm_name(h["player_name"]))
-        if player is None:
-            continue
-        cost = h["price"] + cfg["keeper_surcharge"]
-        out.setdefault(h["team_id"], []).append({
-            "player": player,
-            "last_price": h["price"],
-            "keeper_cost": cost,
-            "surplus": round(player["value"] - cost, 1),
-        })
+        if player is not None:
+            price_of[player["id"]] = (h["price"], h["team_id"])
+
+    roster_rows = db.rosters() if db.meta_get("roster_source") == "espn" else []
+    if roster_rows:
+        for r in roster_rows:
+            player = by_id.get(r["player_id"])
+            if player is None or player["position"] in ("DST", "K"):
+                continue
+            hit = price_of.get(player["id"])
+            out.setdefault(r["team_id"], []).append(
+                entry(player, hit[0] if hit else 0, waiver=hit is None))
+    else:
+        for h in hist:
+            player = by_id.get(h["player_id"]) if h["player_id"] else None
+            if player is None:
+                player = by_name.get(norm_name(h["player_name"]))
+            if player is None:
+                continue
+            out.setdefault(h["team_id"], []).append(entry(player, h["price"]))
     for tid in out:
         out[tid].sort(key=lambda c: c["surplus"], reverse=True)
     return out
