@@ -69,6 +69,21 @@ Everything Brett has specified so far. Production waits until he gives the go
   2026-2027 plate glowing → "START THE DRAFT." The video is designed to be
   played in the room and hard-cut straight into nominations.
 
+## Money & lore (from Brett's payout + trade history)
+
+- **Buy-in grew $425 (2016) → $650 (2025)**, +$25/yr; payouts 2025: 1st $3,000,
+  2nd $1,550, total-points $1,400, 3rd $650, weekly high/low $50, loser of
+  losers bracket -$100. Stakes scene now reads "$650 BUY-IN. $3,000 FOR FIRST."
+- **#FHO — Fat Hits Only**: since 2025 the weekly-low fees fund one ten-leg
+  group parlay (one bet from everyone). Best ever: 8/10. Still searching for
+  the first hit. Has its own scene before the closer.
+- **Trades**: 71 logged since 2016. Most: Farmer 23. Fewest: Singer & Omar,
+  4 each ("the quiet ones hold four rings"). The 2025-season trades set 2026
+  draft dollars: Lesesne +100, Crisp +60, Ned +45, Farmer -10, Omar -35,
+  Byrd -60, Link -100 — shown in "THE LEDGER" scene, ending "the board is
+  rigged before pick one." Full ledger bundled in the copilot
+  (app/trade_ledger.py, History tab).
+
 ## Assets
 
 - `public/logos/{crisp,link,kevin,farmer,lesesne,rob,singer,ned,omar,byrd}.png`

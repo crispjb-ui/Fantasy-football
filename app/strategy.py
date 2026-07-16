@@ -123,6 +123,40 @@ def import_standings_csv(text):
     return len(standings)
 
 
+def load_bundled_drafts():
+    """Import the bundled 2021-2025 auction results (app/draft_history.py).
+
+    Rows carry sheet aliases (last names / Nova), so the meta team_aliases
+    mapping must be configured first — same requirement as sheet sync.
+    Keeper flags (2024-25) come along; they're excluded from temperament math.
+    """
+    from . import draft_history
+    tidx = _team_index()
+    pidx = {}
+    for p in db.all_players():
+        pidx[(norm_name(p["name"]), p["position"])] = p
+        pidx.setdefault(norm_name(p["name"]), p)
+    loaded, skipped = {}, []
+    for season, rows in sorted(draft_history.DRAFTS.items()):
+        out = []
+        for r in rows:
+            team_id = _match_team(r["team"], tidx)
+            if team_id is None:
+                skipped.append(f"{season}: no team match for '{r['team']}'")
+                continue
+            matched = pidx.get((norm_name(r["player"]), r["pos"])) or pidx.get(norm_name(r["player"]))
+            out.append({
+                "team_id": team_id, "player_name": r["player"],
+                "player_id": matched["id"] if matched else None,
+                "position": r["pos"], "price": r["price"],
+                "is_keeper": r.get("keeper", False),
+            })
+        if out:
+            db.replace_history(int(season), out)
+            loaded[int(season)] = len(out)
+    return loaded, skipped[:8]
+
+
 # --- temperament calibration -----------------------------------------------------
 
 def calibrate_premium(valued_pool, cfg):
@@ -136,7 +170,8 @@ def calibrate_premium(valued_pool, cfg):
     """
     by_season = {}
     for h in db.history():
-        if h["season"] < cfg["season"]:
+        # keeper prices are formulaic (prior year + $15), not room behavior
+        if h["season"] < cfg["season"] and not h.get("is_keeper"):
             by_season.setdefault(h["season"], []).append(h["price"])
     usable = {s: p for s, p in by_season.items() if len(p) >= 60}
     if not usable:

@@ -1250,7 +1250,13 @@ async function renderData(gen) {
       </div>
       <div class="panel">
         <h2>Last-year import (keepers, trades &amp; league temperament)</h2>
-        <div class="note" style="margin-bottom:8px">Paste last season's auction results —
+        <div class="note" style="margin-bottom:8px">League UNC's 2021-2025 auctions ship with the app
+          (keepers flagged for 2024-25). One click loads all five — needs the manager aliases above.</div>
+        <div class="formrow">
+          <button class="btn primary" id="bundledBtn">Load bundled 2021-2025 drafts</button>
+          <span class="note" id="bundledStatus"></span>
+        </div>
+        <div class="note" style="margin:10px 0 8px">Or paste any season's results —
           columns <span class="kbd">Team, Player, Price</span> (Pos optional). Unlocks the keeper advisor,
           trade finder and auto-calibration of how hard your room overpays elites.</div>
         <textarea id="histText" placeholder="Team,Player,Price&#10;Team 3,Bijan Robinson,55&#10;…"></textarea>
@@ -1399,6 +1405,14 @@ async function renderData(gen) {
         (r.warnings.length ? `<br>⚠️ ${r.warnings.map(esc).join("<br>⚠️ ")}` : "");
       await loadApp();
     } catch (e) { $("#sheetStatus").textContent = "❌ " + e.message; }
+  };
+  $("#bundledBtn").onclick = async () => {
+    try {
+      const r = await api("/api/history/load_bundled", {});
+      $("#bundledStatus").innerHTML = `✅ Loaded: ${Object.entries(r.loaded).map(([s, n]) => `${s} (${n})`).join(", ")}` +
+        (r.skipped.length ? `<br>⚠️ ${r.skipped.map(esc).join("<br>⚠️ ")}` : "");
+      await loadApp();
+    } catch (e) { $("#bundledStatus").textContent = "❌ " + e.message; }
   };
   $("#histBtn").onclick = async () => {
     try {

@@ -989,16 +989,28 @@ def api_transaction_delete(q, body):
     return {"ok": True}
 
 
+def api_history_load_bundled(q, body):
+    """One click: import the bundled 2021-2025 auction results (keepers
+    flagged for 2024-25). Needs team_aliases configured, like sheet sync."""
+    loaded, skipped = strategy.load_bundled_drafts()
+    if not loaded:
+        raise RuntimeError("No seasons loaded — set the manager aliases in Data & Setup first")
+    return {"ok": True, "loaded": loaded, "skipped": skipped}
+
+
 def api_league_history(q, body):
     """Complete 2006-2025 league history bundled with the app (league_history.py):
     per-season final standings, champions (plaque-verified), and the all-time
     power ranking with its formula."""
+    from . import trade_ledger
     return {
         "founded": league_history.FOUNDED,
         "formula": league_history.FORMULA,
         "standings": league_history.STANDINGS,
         "champions": league_history.CHAMPIONS,
         "all_time": league_history.ALL_TIME,
+        "trades": trade_ledger.TRADES,
+        "budget_2026": trade_ledger.BUDGET_2026,
     }
 
 
@@ -1018,6 +1030,7 @@ ROUTES = {
     ("POST", "/api/draft/reset"): api_draft_reset,
     ("POST", "/api/keeper"): api_keeper,
     ("POST", "/api/history/import"): api_history_import,
+    ("POST", "/api/history/load_bundled"): api_history_load_bundled,
     ("POST", "/api/standings/import"): api_standings_import,
     ("GET", "/api/strategy"): api_strategy,
     ("POST", "/api/sheet/config"): api_sheet_config,

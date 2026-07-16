@@ -683,6 +683,16 @@ check("fp legacy ecrData parsed", len(p1) == 1 and p1[0]["player_name"] == "A", 
 check("fp __NEXT_DATA__ parsed", len(p2) == 1 and p2[0]["player_name"] == "B" and
       p2[0]["player_position_id"] == "WR", str(p2))
 
+# --- bundled 2021-2025 auction results ----------------------------------------------------
+for i, alias in enumerate(["Crisp", "Lesesne", "Byrd", "Link", "Ned", "Omar", "Nova", "Singer", "Farmer", "Rob"]):
+    call("POST", "/api/teams", {"id": i + 1, "alias": alias})
+r, s = call("POST", "/api/history/load_bundled", {})
+check("bundled drafts load", s == 200 and len(r["loaded"]) == 5, str(r)[:120])
+check("bundled 2025 has 150 sales", r["loaded"].get("2025") == 150, str(r["loaded"]))
+r, s = call("GET", "/api/strategy")
+check("temperament uses all five drafts", r["temperament"] is not None and
+      len(r["temperament"]["seasons"]) == 5, str(r.get("temperament"))[:120])
+
 # --- bundled league history --------------------------------------------------------------
 r, s = call("GET", "/api/league_history")
 check("league history serves", s == 200 and r["founded"] == 2006, str(s))

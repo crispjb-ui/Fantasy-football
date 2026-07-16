@@ -31,7 +31,9 @@ const FACE_LEN = 90 + FACE_NAMES.length * 13 + 90;
 const PER_RECORD = 80;
 const RECORDS_LEN = 40 + 6 * PER_RECORD;
 const LASTYEAR_LEN = 460;
+const LEDGER_LEN = 560;
 const STAKES_LEN = 130;
+const FHO_LEN = 200;
 const CLOSER_LEN = 240;
 const PER_TICK = 32; // frames per number in the final 10..1 countdown
 const TICKS_LEN = 60 + 10 * PER_TICK;
@@ -41,8 +43,10 @@ const T_PLAQUE = T_MAP + MAP_EMBED_DURATION;
 const T_FACE = T_PLAQUE + PLAQUE_DURATION;
 const T_RECORDS = T_FACE + FACE_LEN;
 const T_LASTYEAR = T_RECORDS + RECORDS_LEN;
-const T_STAKES = T_LASTYEAR + LASTYEAR_LEN;
-const T_CLOSER = T_STAKES + STAKES_LEN;
+const T_LEDGER = T_LASTYEAR + LASTYEAR_LEN;
+const T_STAKES = T_LEDGER + LEDGER_LEN;
+const T_FHO = T_STAKES + STAKES_LEN;
+const T_CLOSER = T_FHO + FHO_LEN;
 const T_TICKS = T_CLOSER + CLOSER_LEN;
 const T_FINALE = T_TICKS + TICKS_LEN;
 export const FILM_DURATION = T_FINALE + PLAQUE_FINALE_DURATION;
@@ -259,11 +263,133 @@ const LastYear: React.FC = () => {
   );
 };
 
+/* Scene 4.8 — the ledger: trades, and the 2026 board already in motion */
+const BUDGET_MOVES: [string, number][] = [
+  ["LESESNE", 100], ["CRISP", 60], ["NED", 45],
+  ["FARMER", -10], ["OMAR", -35], ["BYRD", -60], ["LINK", -100],
+];
+
+const Ledger: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const head = spring({ frame, fps, config: { damping: 13 } });
+  const GOLD = "#e8c15a";
+  if (frame < 170) {
+    const s1 = spring({ frame: frame - 25, fps, config: { damping: 12 } });
+    const s2 = spring({ frame: frame - 80, fps, config: { damping: 12 } });
+    return (
+      <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+        <div style={{ ...font, fontSize: 60, letterSpacing: 18, color: CAROLINA_LIGHT, opacity: head }}>
+          THE LEDGER
+        </div>
+        <div style={{ ...font, fontSize: 110, letterSpacing: 4, color: GOLD, marginTop: 50, opacity: s1, transform: `scale(${0.7 + s1 * 0.3})` }}>
+          71 TRADES
+        </div>
+        <div style={{ ...font, fontSize: 32, letterSpacing: 8, marginTop: 24, color: WHITE, opacity: s1 }}>
+          LOGGED SINCE 2016
+        </div>
+        <div style={{ ...font, fontSize: 30, letterSpacing: 4, marginTop: 44, color: CAROLINA_LIGHT, opacity: s2, lineHeight: 1.7 }}>
+          MOST: <span style={{ color: WHITE }}>FARMER · 23</span>
+          &nbsp;&nbsp;&nbsp;FEWEST: <span style={{ color: WHITE }}>SINGER &amp; OMAR · 4</span>
+          <br />
+          <span style={{ fontSize: 26, color: CAROLINA }}>THE QUIET ONES HOLD FOUR RINGS.</span>
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  const local = frame - 170;
+  const h2 = spring({ frame: local, fps, config: { damping: 13 } });
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <div style={{ ...font, fontSize: 48, letterSpacing: 12, color: CAROLINA_LIGHT, opacity: h2, position: "absolute", top: 90 }}>
+        2026 IS ALREADY IN MOTION
+      </div>
+      <div style={{ width: 900, marginTop: 20 }}>
+        {BUDGET_MOVES.map(([who, amt], i) => {
+          const s = spring({ frame: local - 25 - i * 12, fps, config: { damping: 13, stiffness: 160 } });
+          const pos = amt > 0;
+          return (
+            <div
+              key={who}
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                padding: "12px 30px",
+                marginBottom: 8,
+                borderRadius: 10,
+                background: pos ? "rgba(93,190,120,.10)" : "rgba(217,79,79,.10)",
+                border: `1px solid ${pos ? "#5dbe7866" : `${RED}55`}`,
+                opacity: s,
+                transform: `translateX(${(1 - s) * (pos ? -60 : 60)}px)`,
+              }}
+            >
+              <span style={{ ...font, fontSize: 34, textAlign: "left", flex: 1 }}>{who}</span>
+              <span style={{ ...font, fontSize: 38, color: pos ? "#5dbe78" : RED }}>
+                {pos ? "+" : "−"}${Math.abs(amt)} DRAFT DOLLARS
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ position: "absolute", bottom: 42, width: "100%", textAlign: "center" }}>
+        <div
+          style={{
+            ...font,
+            display: "inline-block",
+            padding: "14px 44px",
+            borderRadius: 14,
+            background: "rgba(4, 9, 18, 0.85)",
+            border: `2px solid ${CAROLINA}55`,
+            fontSize: 30,
+            letterSpacing: 3,
+            color: WHITE,
+            opacity: spring({ frame: local - 130, fps, config: { damping: 13 } }),
+          }}
+        >
+          SAQUON, CHASE &amp; HENRY ALREADY MOVED. THE BOARD IS RIGGED BEFORE PICK ONE.
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/* Scene 5.5 — #FHO */
+const FHO: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const s1 = spring({ frame, fps, config: { damping: 10, stiffness: 180 } });
+  const s2 = spring({ frame: frame - 40, fps, config: { damping: 13 } });
+  const s3 = spring({ frame: frame - 95, fps, config: { damping: 12 } });
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <div
+        style={{
+          ...font,
+          fontSize: 170,
+          letterSpacing: 10,
+          color: "#e8c15a",
+          opacity: s1,
+          transform: `scale(${0.6 + s1 * 0.4})`,
+          textShadow: "0 0 100px rgba(232,193,90,.5)",
+        }}
+      >
+        #FHO
+      </div>
+      <div style={{ ...font, fontSize: 40, letterSpacing: 10, marginTop: 30, opacity: s2 }}>
+        FAT HITS ONLY — ONE PARLAY. TEN LEGS. EVERYBODY IN.
+      </div>
+      <div style={{ ...font, fontSize: 30, letterSpacing: 5, marginTop: 26, color: CAROLINA_LIGHT, opacity: s3 }}>
+        BEST EVER: 8 OF 10. THE SEARCH FOR THE FIRST HIT CONTINUES.
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /* Scene 5 — the stakes */
 const Stakes: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const items = ["$500.", "15 SPOTS.", "NO MERCY."];
+  const items = ["$650 BUY-IN.", "$3,000 FOR FIRST.", "NO MERCY."];
   return (
     <AbsoluteFill
       style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 90 }}
@@ -431,8 +557,14 @@ export const Film: React.FC = () => (
     <Sequence from={T_LASTYEAR} durationInFrames={LASTYEAR_LEN}>
       <LastYear />
     </Sequence>
+    <Sequence from={T_LEDGER} durationInFrames={LEDGER_LEN}>
+      <Ledger />
+    </Sequence>
     <Sequence from={T_STAKES} durationInFrames={STAKES_LEN}>
       <Stakes />
+    </Sequence>
+    <Sequence from={T_FHO} durationInFrames={FHO_LEN}>
+      <FHO />
     </Sequence>
     <Sequence from={T_CLOSER} durationInFrames={CLOSER_LEN}>
       <Closer />

@@ -134,6 +134,12 @@ def connect() -> sqlite3.Connection:
             conn.execute("ALTER TABLE teams ADD COLUMN budget INTEGER")
         except sqlite3.OperationalError:
             pass
+        try:
+            # Keeper flag on historical draft rows: keeper prices are formula
+            # prices (prior year + $15), not auction behavior.
+            conn.execute("ALTER TABLE history ADD COLUMN is_keeper INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         _ensure_teams(conn)
         _local.conn = conn
     return conn
@@ -464,14 +470,14 @@ def set_byes(team_byes):
 # --- last-year history (keeper/trade/temperament analysis) ---------------------
 
 def replace_history(season, rows):
-    """rows: [{team_id, player_name, player_id, position, price}]"""
+    """rows: [{team_id, player_name, player_id, position, price[, is_keeper]}]"""
     conn = connect()
     conn.execute("DELETE FROM history WHERE season=?", (season,))
     conn.executemany(
-        "INSERT INTO history (season, team_id, player_name, player_id, position, price) "
-        "VALUES (?,?,?,?,?,?)",
+        "INSERT INTO history (season, team_id, player_name, player_id, position, price, is_keeper) "
+        "VALUES (?,?,?,?,?,?,?)",
         [(season, r["team_id"], r["player_name"], r.get("player_id"),
-          r.get("position"), int(r["price"])) for r in rows],
+          r.get("position"), int(r["price"]), 1 if r.get("is_keeper") else 0) for r in rows],
     )
     conn.commit()
 
