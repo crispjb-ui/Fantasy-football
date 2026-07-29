@@ -79,6 +79,7 @@ function render(full = true) {
   else if (v === "tv") renderTV();
   else if (v.startsWith("team")) renderTeam(+v.slice(4));
   else if (v === "setup") renderSetup();
+  else if (v === "history") renderHistory();
   else renderHome();
 }
 
@@ -94,7 +95,9 @@ function renderHome() {
         `<option value="${t.id}" ${t.id === S.myTeam ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>
       <button class="btn" id="goTeam">My team view →</button>
     </div>
-    <div class="note" style="margin-top:8px"><a href="#setup" style="color:var(--muted)">setup</a></div>
+    <div class="note" style="margin-top:8px">
+      <a href="#history" style="color:var(--muted)">📜 league history</a> ·
+      <a href="#setup" style="color:var(--muted)">setup</a></div>
   </div>
   <div class="panel"><h2>Budgets</h2>${budgetsGrid()}</div>
   <div class="panel"><h2>Recent sales</h2>${recentList(8)}</div>`;
@@ -363,6 +366,39 @@ function renderTV() {
   if (uf) uf.onclick = () => { S.tvFocus = null; render(); };
 }
 
+async function renderHistory() {
+  if (!S.history) {
+    $("#app").innerHTML = `<div class="panel note">Loading history…</div>`;
+    try { S.history = await api("/api/history"); }
+    catch (e) { $("#app").innerHTML = `<div class="panel note">History unavailable: ${esc(e.message)}</div>`; return; }
+  }
+  const seasons = Object.keys(S.history.seasons).sort().reverse();
+  if (!S.histYear || !S.history.seasons[S.histYear]) S.histYear = seasons[0];
+  const rows = S.history.seasons[S.histYear] || [];
+  const spend = rows.reduce((a, r) => a + r.price, 0);
+  const top = rows.reduce((a, r) => Math.max(a, r.price), 0);
+  const keepers = rows.filter(r => r.keeper).length;
+  $("#app").innerHTML = `
+  <div class="panel">
+    <h2>League history <a href="#home" style="float:right;color:var(--muted)">home</a></h2>
+    <div class="row">
+      ${seasons.map(s => `<button class="btn small ${s === S.histYear ? "primary" : ""}" data-yr="${s}">${s}${s === S.history.current ? " (live)" : ""}</button>`).join("")}
+      <a class="btn small" href="/api/export/record" download>⬇ Download full record CSV</a>
+    </div>
+    <div class="note" style="margin:6px 0">${S.histYear}: ${rows.length} sales · $${spend} spent · top price $${top}${keepers ? ` · ${keepers} keepers 🔒` : ""}</div>
+    ${rows.map((r, i) => `
+      <div class="result"><span class="dim" style="width:34px;text-align:right">${i + 1}</span>
+        <span class="pos pos-${r.pos || "DST"}">${r.pos || "?"}</span>
+        <span style="flex:1">${esc(r.player)}${r.keeper ? " 🔒" : ""} <span class="dim">→ ${esc(r.team)}</span></span>
+        <b class="money">$${r.price}</b></div>`).join("") || `<div class="note">No sales recorded for ${S.histYear} yet.</div>`}
+  </div>`;
+  $$("[data-yr]").forEach(b => (b.onclick = () => {
+    S.histYear = b.dataset.yr;
+    if (b.dataset.yr === S.history.current) S.history = null; // re-pull live season
+    render();
+  }));
+}
+
 function renderSetup() {
   $("#app").innerHTML = `
   <div class="panel">
@@ -409,8 +445,18 @@ function renderSetup() {
     <div class="row">
       <button class="btn" id="expCsv">Results CSV</button>
       <button class="btn" id="expEspn">ESPN entry list</button>
+      <a class="btn" href="/api/export/record" download>⬇ Full league record CSV (2021→now)</a>
     </div>
+    <div class="note" style="margin:4px 0 8px">The record CSV bundles every past auction plus this one once
+      it has sales — download it after the draft and drop it in the league sheet/drive as the permanent record.</div>
     <pre id="expOut" class="note" style="white-space:pre-wrap;max-height:300px;overflow:auto"></pre>
+    <h2 style="margin-top:12px;color:var(--red)">Danger zone</h2>
+    <div class="row">
+      <button class="btn danger" id="resetPicks">Reset draft (keep keepers)</button>
+      <button class="btn danger" id="resetAll">Wipe picks + keepers</button>
+      <span class="note">For demo cleanup or a false start. A timestamped backup is written first
+        (data/backups/), so nothing is ever truly lost.</span>
+    </div>
   </div>`;
   $("#pin").onchange = e => { S.pin = e.target.value; localStorage.dr_pin = S.pin; };
   $("#save").onclick = async () => {
@@ -462,6 +508,18 @@ function renderSetup() {
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };
+  const doReset = async includeKeepers => {
+    const what = includeKeepers ? "ALL picks INCLUDING keepers" : "all auction picks (keepers stay)";
+    if (!confirm(`Delete ${what}? A backup is saved first.`)) return;
+    try {
+      const r = await api("/api/reset", { pin: $("#pin").value, include_keepers: includeKeepers });
+      toast(`Reset — ${r.removed} picks removed${r.kept_keepers ? " (keepers kept)" : ""}`);
+      S.history = null;
+      await refresh(); render();
+    } catch (e) { toast(e.message, true); }
+  };
+  $("#resetPicks").onclick = () => doReset(false);
+  $("#resetAll").onclick = () => doReset(true);
   $("#expCsv").onclick = async () => { $("#expOut").textContent = (await api("/api/export/csv")).csv; };
   $("#expEspn").onclick = async () => {
     const r = await api("/api/export/espn");

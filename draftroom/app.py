@@ -467,6 +467,93 @@ def api_pool_import(q, body):
     return {"ok": True, "loaded": n, "by_pos": _pool_counts()}
 
 
+# --- league history (bundled 2021-2025 + this draft) --------------------------------
+
+_history_cache = None
+
+
+def _bundled_history():
+    """The copilot ships League UNC's 2021-2025 auction results
+    (app/draft_history.py). Loaded by file path — this module is itself
+    imported as `app`, so a normal `from app.draft_history import ...`
+    would resolve against the wrong package. Degrades to empty if the
+    draft room is run standalone without the copilot's app/ folder."""
+    global _history_cache
+    if _history_cache is None:
+        try:
+            import importlib.util
+            path = os.path.join(os.path.dirname(BASE), "app", "draft_history.py")
+            spec = importlib.util.spec_from_file_location("copilot_draft_history", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _history_cache = mod.DRAFTS
+        except Exception:  # noqa: BLE001 — history is a bonus, never a blocker
+            _history_cache = {}
+    return _history_cache
+
+
+def _current_season_rows():
+    rows, teams = _all_sales()
+    return [{"player": r["pname"], "pos": r["pos"] or "",
+             "team": teams.get(r["team_id"], ""), "price": r["price"],
+             **({"keeper": True} if r["is_keeper"] else {})} for r in rows]
+
+
+def api_history(q, body):
+    seasons = dict(_bundled_history())
+    cur = _current_season_rows()
+    current_key = str(setting("season"))
+    if cur:
+        seasons[current_key] = cur
+    return {"seasons": seasons, "current": current_key}
+
+
+def api_export_record(q, body):
+    """The league's permanent record: every season we have (2021-2025 bundled
+    + this draft once it has sales), one CSV, downloaded as a file so members
+    can keep it / paste it into the history sheet."""
+    seasons = dict(_bundled_history())
+    cur = _current_season_rows()
+    if cur:
+        seasons[str(setting("season"))] = cur
+    lines = ["Season,Pick,Player,Pos,Team,Price,Keeper"]
+    for season in sorted(seasons):
+        for i, r in enumerate(seasons[season], 1):
+            player = str(r["player"]).replace('"', '""')
+            player = f'"{player}"' if "," in player else player
+            lines.append(f"{season},{i},{player},{r.get('pos') or ''},"
+                         f"{r.get('team') or ''},{r['price']},"
+                         f"{'yes' if r.get('keeper') else ''}")
+    name = f"league-record-{min(seasons) if seasons else ''}-{max(seasons) if seasons else ''}.csv"
+    return {"_file": {"name": name, "mime": "text/csv",
+                      "content": "\n".join(lines) + "\n"}}
+
+
+def api_reset(q, body):
+    """Wipe draft progress (demo cleanup / false start). Keeps keepers unless
+    include_keepers is set. Always writes a timestamped backup first, so a
+    reset can never destroy the only copy of a real draft."""
+    err = check_pin(body)
+    if err:
+        return err
+    conn = connect()
+    try:
+        d = os.path.join(os.path.dirname(DB_PATH), "backups")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"draftroom-pre-reset-{int(time.time())}.json"), "w") as f:
+            json.dump(api_sync({}, {}), f)
+    except OSError:
+        pass
+    include_keepers = bool(body.get("include_keepers"))
+    cur = conn.execute("DELETE FROM picks" if include_keepers
+                       else "DELETE FROM picks WHERE is_keeper=0")
+    conn.commit()
+    meta_set("nom_idx", 0)
+    audit(f"RESET ({'picks + keepers' if include_keepers else 'picks only'}, "
+          f"{cur.rowcount} removed)")
+    return {"ok": True, "removed": cur.rowcount, "kept_keepers": not include_keepers}
+
+
 # --- exports & copilot sync --------------------------------------------------------
 
 def _all_sales():
@@ -538,6 +625,9 @@ ROUTES = {
     ("GET", "/api/sync"): api_sync,
     ("GET", "/api/export/csv"): api_export_csv,
     ("GET", "/api/export/espn"): api_export_espn,
+    ("GET", "/api/history"): api_history,
+    ("GET", "/api/export/record"): api_export_record,
+    ("POST", "/api/reset"): api_reset,
 }
 
 
@@ -572,6 +662,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = route(parse_qs(parsed.query), body)
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
+            if isinstance(result, dict) and "_file" in result:
+                f = result["_file"]
+                data = f["content"].encode()
+                self.send_response(200)
+                self.send_header("Content-Type", f.get("mime", "text/csv") + "; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="{f["name"]}"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return None
             return self._json(result, 400 if isinstance(result, dict) and result.get("error") else 200)
         if method == "GET":
             return self._static(parsed.path)
