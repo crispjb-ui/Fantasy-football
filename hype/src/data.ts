@@ -69,7 +69,7 @@ export const DRAFT_VENUES: {
   { year: 2016, city: null },
   { year: 2017, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
   { year: 2018, city: "Folly Beach, SC", lat: 32.655, lng: -79.9403 },
-  { year: 2019, city: "New York City", venue: "The Boat Party", lat: 40.7128, lng: -74.006 },
+  { year: 2019, city: "New York City", lat: 40.7128, lng: -74.006 }, // boat party was part of the weekend, not the draft itself
   { year: 2020, city: "Pinehurst, NC", lat: 35.1954, lng: -79.4695 },
   { year: 2021, city: "Emerald Isle, NC", venue: "Moonrakers", lat: 34.6779, lng: -76.951 },
   { year: 2022, city: "Charlottesville, VA", lat: 38.0293, lng: -78.4767 },
