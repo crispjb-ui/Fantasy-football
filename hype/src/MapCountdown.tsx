@@ -105,7 +105,7 @@ const LEGS: Leg[] = (() => {
       len:
         (to ? PER_LEG : PER_LEG_LOST) +
         (LEG_EXTRA[venue.year] || 0) +
-        PHOTO_HOLD * Math.min(VENUE_PHOTOS[venue.year]?.length ?? 0, 3),
+        PHOTO_HOLD * Math.min(VENUE_PHOTOS[venue.year]?.length ?? 0, 6),
     };
     t += leg.len;
     return leg;
@@ -701,9 +701,17 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                 { x: 1430, y: 300, r: 3.5 },
                 { x: 1020, y: 260, r: -2.5 },
                 { x: 1560, y: 700, r: -4 },
+                { x: 1140, y: 640, r: 2.5 },
+                { x: 720, y: 420, r: -3.5 },
+                { x: 1700, y: 470, r: 2 },
+                { x: 880, y: 700, r: 4 },
+                { x: 1310, y: 480, r: -2 },
               ];
-              return photos.slice(0, 3).map((f, i) => {
-                const t = legLocal - (venueAt + 12 + i * 16);
+              const n = Math.min(photos.length, SLOTS.length);
+              // polaroids shrink as the pile grows so the collage still fits
+              const w = n <= 3 ? 340 : n <= 5 ? 290 : 250;
+              return photos.slice(0, SLOTS.length).map((f, i) => {
+                const t = legLocal - (venueAt + 12 + i * 14);
                 if (t < 0) return null;
                 const s = spring({ frame: t, fps, config: { damping: 13, stiffness: 110 } });
                 const slot = SLOTS[i];
@@ -716,15 +724,15 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                       position: "absolute",
                       left: px,
                       top: py,
-                      padding: "12px 12px 38px",
+                      padding: "12px 12px 36px",
                       background: "#f6f2e8",
                       borderRadius: 4,
                       boxShadow: "0 24px 80px rgba(0,0,0,.75)",
                       transform: `translate(-50%, -50%) rotate(${slot.r * s}deg) scale(${0.08 + s * 0.92})`,
                     }}
                   >
-                    <Img src={staticFile(`photos/${f}`)} style={{ width: 340, display: "block" }} />
-                    <div style={{ ...font, color: "#2a2318", fontSize: 20, letterSpacing: 3, textAlign: "center", marginTop: 9 }}>
+                    <Img src={staticFile(`photos/${f}`)} style={{ width: w, display: "block" }} />
+                    <div style={{ ...font, color: "#2a2318", fontSize: 19, letterSpacing: 3, textAlign: "center", marginTop: 8 }}>
                       {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
                     </div>
                   </div>
