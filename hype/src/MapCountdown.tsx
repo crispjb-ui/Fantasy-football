@@ -33,8 +33,8 @@ const PREAMBLE = 380; // methodology card: formula builds term by term
 /* Structure (Brett's order): champions & the venues they picked FIRST,
    then the methodology preamble, then the all-time rankings countdown. */
 const JOURNEY_START = ARCS_DONE + 30;
-const PER_LEG = 150; // slow burn: crown the champ, fly, land, read the one-liner
-const PER_LEG_LOST = 100; // lost-site years move quicker so the middle doesn't drag
+const PER_LEG = 195; // slow burn: ~3.2s on the champ, ~3s on the venue + one-liner
+const PER_LEG_LOST = 120; // lost-site years move quicker so the middle doesn't drag
 const PHOTO_HOLD = 50; // stops with a draft-night photo linger on the polaroid
 // per-leg extras: linger on the Emerald Isle punchline and the Lothian arrival
 const LEG_EXTRA: Record<number, number> = { 2021: 100, 2026: 130 }; // keyed by venue year
