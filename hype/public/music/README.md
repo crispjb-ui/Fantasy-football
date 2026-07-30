@@ -1,4 +1,4 @@
-# Soundtrack files (not yet committed — awaiting re-upload)
+# Soundtrack files
 
 The Film's MEDLEY expects these exact filenames:
 
