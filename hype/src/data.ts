@@ -46,6 +46,43 @@ export const LOCATIONS: Record<string, { city: string; lat: number; lng: number 
   Byrd: { city: "Emerald Isle, NC", lat: 34.6779, lng: -76.951 },
 };
 
+/* Draft venues by August year — the reigning champion picks the room.
+   null city = site lost to history (early era / nobody remembers).
+   uncertain = Brett's tracker had question marks. */
+export const DRAFT_VENUES: {
+  year: number;
+  city: string | null;
+  venue?: string;
+  lat?: number;
+  lng?: number;
+  uncertain?: boolean;
+}[] = [
+  { year: 2007, city: null },
+  { year: 2008, city: "Baltimore, MD", lat: 39.2904, lng: -76.6122, uncertain: true }, // "probably not 100% official"
+  { year: 2009, city: null },
+  { year: 2010, city: null },
+  { year: 2011, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
+  { year: 2012, city: "Baltimore, MD", venue: "Sauté", lat: 39.2904, lng: -76.6122 },
+  { year: 2013, city: null },
+  { year: 2014, city: "Washington, DC", lat: 38.9072, lng: -77.0369 },
+  { year: 2015, city: "Washington, DC", lat: 38.9072, lng: -77.0369, uncertain: true },
+  { year: 2016, city: null },
+  { year: 2017, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
+  { year: 2018, city: "Folly Beach, SC", lat: 32.655, lng: -79.9403 },
+  { year: 2019, city: "New York City", venue: "The Boat Party", lat: 40.7128, lng: -74.006 },
+  { year: 2020, city: "Pinehurst, NC", lat: 35.1954, lng: -79.4695 },
+  { year: 2021, city: "Emerald Isle, NC", venue: "Moonrakers", lat: 34.6779, lng: -76.951 },
+  { year: 2022, city: "Charlottesville, VA", lat: 38.0293, lng: -78.4767 },
+  { year: 2023, city: "Richmond, VA", lat: 37.5407, lng: -77.436 },
+  { year: 2024, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
+  { year: 2025, city: "Bozeman, MT", lat: 45.677, lng: -111.0429 },
+  { year: 2026, city: "Lothian, MD", venue: "The Champ's House", lat: 38.8032, lng: -76.648 },
+];
+
+/* Draft-night photos: year -> filename under hype/public/photos/.
+   Populate as Brett supplies them — the journey shows a polaroid at that stop. */
+export const VENUE_PHOTOS: Record<number, string> = {};
+
 /* Team-name progressions (year = first season under that name).
    2006 names unknown except the champion (LaSizzle, per the plaque). */
 export const NAME_HISTORY: Record<string, { year: number; name: string }[]> = {

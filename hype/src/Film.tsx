@@ -10,7 +10,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { MapCountdown, MAP_EMBED_DURATION } from "./MapCountdown";
+import { MapCountdown, MAP_EMBED_DURATION, MAP_PREAMBLE_START, MAP_VEGAS_AT } from "./MapCountdown";
 import { Plaque, PLAQUE_DURATION, PlaqueFinale, PLAQUE_FINALE_DURATION } from "./Plaque";
 import { ALL_TIME, NAME_HISTORY, STANDINGS } from "./data";
 
@@ -56,17 +56,15 @@ export const FILM_DURATION = T_FINALE + PLAQUE_FINALE_DURATION;
    the tempo LIFTS when the rankings kick in. Each track enters at its
    hottest section (offsets from energy analysis). Crossfades are centered
    on scene boundaries. Files: hype/public/music/ (committed to the repo). */
-const MAP_COUNTDOWN_AT = T_MAP + 660; // arcs done + preamble -> first ranking card
-const MAP_RELAY_AT = T_MAP + 2110; // countdown done -> champions relay
 const FADE = 45; // 1.5s each side of a boundary
 
 const MEDLEY = [
-  // moody build for the cold open + Chapel Hill + methodology preamble
-  { src: "music/at_night.mp3", from: 0, to: MAP_COUNTDOWN_AT, offset: 0 },
-  // crowd pick #1 carries the rankings countdown, entering on its drop
-  { src: "music/candy.mp3", from: MAP_COUNTDOWN_AT, to: MAP_RELAY_AT, offset: 30 * FILM_FPS },
-  // rave energy for the champions relay across the map
-  { src: "music/rave_generator.mp3", from: MAP_RELAY_AT, to: T_PLAQUE, offset: 70 * FILM_FPS },
+  // moody build: cold open + Chapel Hill + arcs + the Yahoo-era journey legs
+  { src: "music/at_night.mp3", from: 0, to: T_MAP + MAP_VEGAS_AT, offset: 0 },
+  // rave drops in the moment the league first hits Vegas (2011), rides the journey home
+  { src: "music/rave_generator.mp3", from: T_MAP + MAP_VEGAS_AT, to: T_MAP + MAP_PREAMBLE_START, offset: 70 * FILM_FPS },
+  // crowd pick #1: methodology breakdown, then the rankings countdown on its drops
+  { src: "music/candy.mp3", from: T_MAP + MAP_PREAMBLE_START, to: T_PLAQUE, offset: 80 * FILM_FPS },
   // plaque story + Face saga + record cards ride Running's build/drop cycles
   { src: "music/running.mp3", from: T_PLAQUE, to: T_LASTYEAR, offset: 35 * FILM_FPS },
   // trash-talk block: 2025 recap, trade ledger, stakes, #FHO

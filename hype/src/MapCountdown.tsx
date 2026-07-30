@@ -11,7 +11,7 @@ import {
 } from "remotion";
 import { feature, mesh } from "topojson-client";
 import { geoAlbersUsa, geoPath } from "d3-geo";
-import { ALL_TIME, CHAMPIONS, LOCATIONS, NAME_HISTORY, UNC } from "./data";
+import { ALL_TIME, CHAMPIONS, DRAFT_VENUES, LOCATIONS, NAME_HISTORY, UNC, VENUE_PHOTOS } from "./data";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const topo = require("us-atlas/states-10m.json");
 
@@ -30,16 +30,13 @@ const ZOOM_OUT_END = 160; // full USA visible
 const ARCS_DONE = 280; // all arcs landed
 const PER_STOP = 145; // frames per manager in the countdown — long enough to read & talk
 const PREAMBLE = 380; // methodology card: formula builds term by term
-const COUNTDOWN_START = ARCS_DONE + PREAMBLE;
-const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
-/* Trophy tour: the plaque bounces champion to champion, 2006 -> 2025 */
-const TOUR_START = COUNTDOWN_END + 50; // camera is back at full USA by then
-const PER_HOP = 30;
-const HOPS_START = TOUR_START + 50;
-const EMERALD_AT = HOPS_START + 20 * PER_HOP; // then the punchline
-const TOUR_END = EMERALD_AT + 110;
-export const MAP_DURATION = TOUR_END + 140; // standalone closer
-export const MAP_EMBED_DURATION = TOUR_END + 30;
+/* Structure (Brett's order): champions & the venues they picked FIRST,
+   then the methodology preamble, then the all-time rankings countdown. */
+const JOURNEY_START = ARCS_DONE + 30;
+const PER_LEG = 68; // crown the champ -> comet to the venue they picked
+// per-leg extras: linger on the Emerald Isle punchline and the Lothian arrival
+const LEG_EXTRA: Record<number, number> = { 2021: 100, 2026: 130 }; // keyed by venue year
+export const MAP_JOURNEY_START = JOURNEY_START;
 
 /* ---- geo (computed once) ---- */
 const nation = feature(topo, topo.objects.nation) as any;
@@ -75,13 +72,51 @@ const STOPS = [...ALL_TIME].reverse().map((row, i) => {
   };
 });
 
-/* Trophy-tour waypoints: where each year's plaque "lives" (champ's current city). */
-const CHAMP_STOPS = CHAMPIONS.map((c) => {
-  const loc = LOCATIONS[c.key];
-  const [x, y] = pt(loc.lng, loc.lat);
-  const dx = c.key === "Link" ? 16 : c.key === "Crisp" ? -16 : 0;
-  return { ...c, x: x + dx, y, city: loc.city };
-});
+/* The journey: each champion (crowned at their home city) carries the league
+   to the venue THEY picked for the next August. Missing venues = lost legs. */
+type Leg = {
+  champ: (typeof CHAMPIONS)[number];
+  from: { x: number; y: number };
+  to: { x: number; y: number } | null;
+  venue: (typeof DRAFT_VENUES)[number];
+  start: number; // frame offset within the journey
+  len: number;
+};
+const LEGS: Leg[] = (() => {
+  let t = 0;
+  return CHAMPIONS.map((c) => {
+    const venue = DRAFT_VENUES.find((v) => v.year === c.year + 1)!;
+    const loc = LOCATIONS[c.key];
+    const [hx, hy] = pt(loc.lng, loc.lat);
+    const dx = c.key === "Link" ? 16 : c.key === "Crisp" ? -16 : 0;
+    let to: { x: number; y: number } | null = null;
+    if (venue.lat != null && venue.lng != null) {
+      const [vx, vy] = pt(venue.lng, venue.lat);
+      to = { x: vx, y: vy };
+    }
+    const leg: Leg = {
+      champ: c,
+      from: { x: hx + dx, y: hy },
+      to,
+      venue,
+      start: t,
+      len: PER_LEG + (LEG_EXTRA[venue.year] || 0),
+    };
+    t += leg.len;
+    return leg;
+  });
+})();
+const JOURNEY_LEN = LEGS.reduce((a, l) => a + l.len, 0);
+const JOURNEY_END = JOURNEY_START + JOURNEY_LEN + 20;
+const PREAMBLE_START = JOURNEY_END;
+const COUNTDOWN_START = PREAMBLE_START + PREAMBLE;
+const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
+export const MAP_DURATION = COUNTDOWN_END + 200; // standalone closer
+export const MAP_EMBED_DURATION = COUNTDOWN_END + 60;
+export const MAP_PREAMBLE_START = PREAMBLE_START;
+/* music switch point: the 2011 leg — the league hits Vegas for the first time */
+export const MAP_VEGAS_AT = JOURNEY_START + (LEGS.find((l) => l.venue.year === 2011)?.start ?? 0);
+const EMERALD_LEG = LEGS.find((l) => l.venue.year === 2021)!;
 const BYRD_PT = (() => {
   const loc = LOCATIONS.Byrd;
   const [x, y] = pt(loc.lng, loc.lat);
@@ -111,18 +146,28 @@ const KFS: Kf[] = (() => {
     usa,
     { t: ARCS_DONE, x: 960, y: 540, s: 1 },
   ];
+  // journey: full-USA view; drift in for the Emerald Isle gag and the Lothian arrival
+  kfs.push({ t: JOURNEY_START, x: 960, y: 540, s: 1 });
+  const emT = JOURNEY_START + EMERALD_LEG.start;
+  kfs.push({ t: emT + PER_LEG - 10, x: 960, y: 540, s: 1 });
+  kfs.push({ t: emT + PER_LEG + 40, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
+  kfs.push({ t: emT + EMERALD_LEG.len - 8, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
+  kfs.push({ t: emT + EMERALD_LEG.len + 26, x: 960, y: 540, s: 1 });
+  const LOTHIAN = LEGS[LEGS.length - 1];
+  const loT = JOURNEY_START + LOTHIAN.start;
+  kfs.push({ t: loT + 40, x: 960, y: 540, s: 1 });
+  if (LOTHIAN.to) {
+    kfs.push({ t: loT + 80, x: LOTHIAN.to.x, y: LOTHIAN.to.y, s: 2.6 });
+    kfs.push({ t: loT + LOTHIAN.len - 8, x: LOTHIAN.to.x, y: LOTHIAN.to.y, s: 2.6 });
+  }
+  kfs.push({ t: PREAMBLE_START + 20, x: 960, y: 540, s: 1 });
   kfs.push({ t: COUNTDOWN_START, x: 960, y: 540, s: 1 });
   STOPS.forEach((st, i) => {
     const t0 = COUNTDOWN_START + i * PER_STOP;
     kfs.push({ t: t0 + 26, x: st.x, y: st.y, s: 3.1 });
     kfs.push({ t: t0 + PER_STOP, x: st.x, y: st.y, s: 3.1 });
   });
-  kfs.push({ t: TOUR_START, x: 960, y: 540, s: 1 });
-  kfs.push({ t: EMERALD_AT + 20, x: 960, y: 540, s: 1 });
-  // the punchline: drift toward Emerald Isle
-  kfs.push({ t: EMERALD_AT + 60, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
-  kfs.push({ t: TOUR_END, x: BYRD_PT.x, y: BYRD_PT.y, s: 2.3 });
-  kfs.push({ t: TOUR_END + 40, x: 960, y: 540, s: 1 });
+  kfs.push({ t: COUNTDOWN_END + 60, x: 960, y: 540, s: 1 });
   kfs.push({ t: MAP_DURATION, x: 960, y: 540, s: 1 });
   return kfs;
 })();
@@ -172,12 +217,17 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
     frame >= COUNTDOWN_START && frame < COUNTDOWN_END
       ? Math.floor((frame - COUNTDOWN_START) / PER_STOP)
       : -1;
-  // during the champions relay, the current champion's logo flares gold
+  // during the journey, the reigning champion's home logo flares gold
   let champKeyNow: string | null = null;
-  if (frame >= HOPS_START && frame < EMERALD_AT) {
-    const raw = (frame - HOPS_START) / PER_HOP;
-    const hi = Math.max(0, Math.min(19, Math.floor(raw)));
-    if (raw - hi >= 0.65 || raw >= 19.65) champKeyNow = CHAMP_STOPS[hi].key;
+  let legNow: Leg | null = null;
+  let legLocal = 0;
+  if (frame >= JOURNEY_START && frame < JOURNEY_END) {
+    const local = frame - JOURNEY_START;
+    legNow = LEGS.find((l) => local >= l.start && local < l.start + l.len) ?? null;
+    if (legNow) {
+      legLocal = local - legNow.start;
+      if (legLocal < 34) champKeyNow = legNow.champ.key;
+    }
   }
 
   return (
@@ -278,68 +328,88 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             );
           })}
 
-          {/* champions relay: a comet streak carries the title city to city;
-              each landing flares the champion's logo gold (rings drawn here,
-              the logo swell happens in the logo loop above via champKeyNow) */}
-          {frame >= HOPS_START - 10 && frame < TOUR_END + 40 && (() => {
-            const raw = (frame - HOPS_START) / PER_HOP;
-            const hopIdx = Math.max(0, Math.min(19, Math.floor(raw)));
-            const from = hopIdx === 0 ? { x: CH[0], y: CH[1] } : CHAMP_STOPS[hopIdx - 1];
-            const to = CHAMP_STOPS[hopIdx];
-            // travel for the first 65% of the hop, rest is the landing flare
-            const frac = raw <= 0 ? 0 : raw - hopIdx;
-            const hopP = Math.min(1, frac / 0.65);
-            const eased = Easing.inOut(Easing.quad)(Math.max(0, hopP));
-            const ctrl: [number, number] = [
-              (from.x + to.x) / 2,
-              Math.min(from.y, to.y) - Math.max(50, Math.hypot(to.x - from.x, to.y - from.y) * 0.3),
-            ];
-            const landed = hopP >= 1 || raw >= 19.65;
-            const done = frame >= EMERALD_AT;
+          {/* the journey: crown the champion at home (gold rings + logo swell),
+              then a comet carries the league to the venue THEY picked. Every
+              visited venue leaves a persistent gold diamond on the map. */}
+          {frame >= JOURNEY_START - 10 && frame < PREAMBLE_START + 40 && (() => {
             const k = 1 / Math.sqrt(cam.s);
-            const trail: [number, number][] = [];
-            if (!landed && !done) {
-              for (let j = 0; j < 10; j++) {
-                const tp = Math.max(0, eased - j * 0.05);
-                trail.push(bez(tp, [from.x, from.y], ctrl, [to.x, to.y]));
-              }
+            const local = frame - JOURNEY_START;
+            const dotsFade = interpolate(frame, [PREAMBLE_START, PREAMBLE_START + 30], [1, 0], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            });
+            // persistent venue diamonds for every completed arrival
+            const dots = LEGS.filter((l) => l.to && local >= l.start + 52);
+            const diamond = (x: number, y: number, r: number, o: number, key: string) => (
+              <path
+                key={key}
+                d={`M ${x} ${y - r} L ${x + r} ${y} L ${x} ${y + r} L ${x - r} ${y} Z`}
+                fill={GOLD}
+                opacity={o}
+                stroke={NAVY_DEEP}
+                strokeWidth={0.8 * k}
+              />
+            );
+            let active: React.ReactNode = null;
+            if (legNow) {
+              const leg = legNow;
+              const crownP = Math.min(1, legLocal / 26);
+              active = (
+                <g>
+                  {/* crown flare at the champion's home */}
+                  {legLocal < 30 && (
+                    <>
+                      <circle cx={leg.from.x} cy={leg.from.y} r={(14 + crownP * 42) * k} fill="none"
+                        stroke={GOLD} strokeWidth={2.6 * (1 - crownP) * k} opacity={1 - crownP * 0.85} />
+                      <circle cx={leg.from.x} cy={leg.from.y} r={(8 + crownP * 24) * k} fill="none"
+                        stroke={WHITE} strokeWidth={1.6 * (1 - crownP) * k} opacity={0.85 * (1 - crownP)} />
+                    </>
+                  )}
+                  {/* comet to the venue (when we know where it was) */}
+                  {leg.to && legLocal >= 20 && (() => {
+                    const p = Math.min(1, (legLocal - 20) / 32);
+                    const eased = Easing.inOut(Easing.quad)(p);
+                    const from: [number, number] = [leg.from.x, leg.from.y];
+                    const to: [number, number] = [leg.to.x, leg.to.y];
+                    const ctrl: [number, number] = [
+                      (from[0] + to[0]) / 2,
+                      Math.min(from[1], to[1]) - Math.max(50, Math.hypot(to[0] - from[0], to[1] - from[1]) * 0.3),
+                    ];
+                    const trail: [number, number][] = [];
+                    if (p < 1) {
+                      for (let j = 0; j < 10; j++) trail.push(bez(Math.max(0, eased - j * 0.05), from, ctrl, to));
+                    }
+                    const flareP = Math.min(1, Math.max(0, (legLocal - 52) / 16));
+                    return (
+                      <g>
+                        {trail.map(([tx, ty], j) => (
+                          <circle key={j} cx={tx} cy={ty} r={Math.max(1.2, 7.5 - j * 0.62) * k}
+                            fill={j === 0 ? WHITE : CAROLINA_LIGHT}
+                            opacity={j === 0 ? 1 : 0.55 * (1 - j / 10)}
+                            style={j === 0 ? { filter: `drop-shadow(0 0 ${8 * k}px ${CAROLINA_LIGHT})` } : undefined} />
+                        ))}
+                        {p >= 1 && flareP < 1 && (
+                          <>
+                            <circle cx={to[0]} cy={to[1]} r={(14 + flareP * 38) * k} fill="none" stroke={GOLD}
+                              strokeWidth={2.4 * (1 - flareP) * k} opacity={1 - flareP} />
+                            <circle cx={to[0]} cy={to[1]} r={(9 + flareP * 20) * k} fill="none" stroke={WHITE}
+                              strokeWidth={1.5 * (1 - flareP) * k} opacity={0.8 * (1 - flareP)} />
+                          </>
+                        )}
+                      </g>
+                    );
+                  })()}
+                </g>
+              );
             }
-            const flareP = Math.min(1, Math.max(0, (frac - 0.65) / 0.35)); // 0..1 during the pause
             return (
               <g>
-                {/* comet + trail */}
-                {trail.map(([tx, ty], j) => (
-                  <circle
-                    key={j}
-                    cx={tx}
-                    cy={ty}
-                    r={Math.max(1.2, 7.5 - j * 0.62) * k}
-                    fill={j === 0 ? WHITE : CAROLINA_LIGHT}
-                    opacity={j === 0 ? 1 : 0.55 * (1 - j / 10)}
-                    style={j === 0 ? { filter: `drop-shadow(0 0 ${8 * k}px ${CAROLINA_LIGHT})` } : undefined}
-                  />
-                ))}
-                {/* landing flare: expanding gold rings on the champion's city */}
-                {landed && !done && (
-                  <>
-                    <circle cx={to.x} cy={to.y} r={(16 + flareP * 40) * k} fill="none" stroke={GOLD}
-                      strokeWidth={2.4 * (1 - flareP) * k} opacity={1 - flareP} />
-                    <circle cx={to.x} cy={to.y} r={(10 + flareP * 22) * k} fill="none" stroke={WHITE}
-                      strokeWidth={1.5 * (1 - flareP) * k} opacity={0.8 * (1 - flareP)} />
-                  </>
-                )}
-                {/* Emerald Isle: the title has never been */}
-                {frame >= EMERALD_AT + 45 && (
-                  <circle
-                    cx={BYRD_PT.x}
-                    cy={BYRD_PT.y}
-                    r={(30 + 6 * Math.sin(frame / 5)) * k}
-                    fill="none"
-                    stroke={RED_ISH}
-                    strokeWidth={2 * k}
-                    strokeDasharray={`${7 * k} ${5 * k}`}
-                    opacity={0.9}
-                  />
+                {dots.map((l) => diamond(l.to!.x, l.to!.y, 6.5 * k, 0.95 * dotsFade, `v${l.venue.year}`))}
+                {active}
+                {/* Emerald Isle: the draft came here. the trophy never has. */}
+                {legNow && legNow.venue.year === 2021 && legLocal >= PER_LEG + 20 && (
+                  <circle cx={BYRD_PT.x} cy={BYRD_PT.y} r={(30 + 6 * Math.sin(frame / 5)) * k} fill="none"
+                    stroke={RED_ISH} strokeWidth={2 * k} strokeDasharray={`${7 * k} ${5 * k}`} opacity={0.9} />
                 )}
               </g>
             );
@@ -393,9 +463,10 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         </div>
       )}
 
-      {/* methodology preamble — the formula assembles itself, term by term */}
-      {frame >= ARCS_DONE + 15 && frame < COUNTDOWN_START && (() => {
-        const local = frame - ARCS_DONE - 15;
+      {/* methodology preamble — the formula assembles itself, term by term
+          (after the journey: champions & venues first, then the rankings) */}
+      {frame >= PREAMBLE_START && frame < COUNTDOWN_START && (() => {
+        const local = frame - PREAMBLE_START;
         const inS = spring({ frame: local, fps, config: { damping: 14 } });
         const out = interpolate(frame, [COUNTDOWN_START - 20, COUNTDOWN_START - 2], [1, 0], {
           extrapolateLeft: "clamp",
@@ -488,8 +559,8 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         </div>
       )}
 
-      {/* trophy-tour captions (screen space, readable from the couch) */}
-      {frame >= TOUR_START && frame < EMERALD_AT + 30 && (
+      {/* journey captions (screen space, readable from the couch) */}
+      {frame >= JOURNEY_START && frame < JOURNEY_END && (
         <div
           style={{
             ...font,
@@ -500,73 +571,130 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             fontSize: 40,
             letterSpacing: 12,
             color: GOLD,
-            opacity: interpolate(frame, [TOUR_START, TOUR_START + 20], [0, 1], {
+            opacity: interpolate(frame, [JOURNEY_START, JOURNEY_START + 20], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             }),
             textShadow: "0 0 40px rgba(232,193,90,.4)",
           }}
         >
-          20 YEARS OF HARDWARE
+          WIN THE RING. PICK THE ROOM.
         </div>
       )}
-      {frame >= HOPS_START && frame < EMERALD_AT + 20 && (() => {
-        const hopIdx = Math.max(0, Math.min(19, Math.floor((frame - HOPS_START) / PER_HOP)));
-        const c = CHAMP_STOPS[hopIdx];
+      {legNow && (() => {
+        const leg = legNow;
+        const v = leg.venue;
+        const isFinal = v.year === 2026;
+        const champIn = spring({ frame: legLocal, fps, config: { damping: 14, stiffness: 160 } });
+        const champOut = interpolate(legLocal, [30, 40], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const venueIn = spring({ frame: legLocal - 34, fps, config: { damping: 14, stiffness: 160 } });
+        const venueOut = interpolate(
+          legLocal,
+          v.year === 2021 ? [PER_LEG + 10, PER_LEG + 26] : [leg.len - 8, leg.len],
+          [1, 0],
+          { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+        );
+        const venueLabel = v.city
+          ? `${isFinal ? "AUG 28, 2026" : `AUG ${v.year}`} · ${(v.venue ? `${v.venue.toUpperCase()} · ` : "")}${v.city.toUpperCase()}${v.uncertain ? " (?)" : ""}`
+          : `${v.year} DRAFT · SITE LOST TO HISTORY`;
+        const photo = VENUE_PHOTOS[v.year];
         return (
-          <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center" }}>
-            <div
-              style={{
-                ...font,
-                display: "inline-block",
-                padding: "16px 46px",
-                borderRadius: 14,
-                background: `${NAVY_DEEP}e0`,
-                border: `2px solid ${GOLD}55`,
-                boxShadow: "0 10px 50px rgba(0,0,0,.7)",
-                fontSize: 48,
-                letterSpacing: 6,
-                color: WHITE,
-              }}
-            >
-              <span style={{ color: GOLD }}>{c.year}</span>
-              &nbsp;&nbsp;{c.team.toUpperCase()}
-              <span style={{ color: CAROLINA_LIGHT }}>&nbsp;&nbsp;· {c.manager.toUpperCase()}</span>
-            </div>
-          </div>
+          <>
+            {legLocal < 40 && (
+              <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center", opacity: champIn * champOut }}>
+                <div
+                  style={{
+                    ...font,
+                    display: "inline-block",
+                    padding: "16px 46px",
+                    borderRadius: 14,
+                    background: `${NAVY_DEEP}e0`,
+                    border: `2px solid ${GOLD}55`,
+                    boxShadow: "0 10px 50px rgba(0,0,0,.7)",
+                    fontSize: 46,
+                    letterSpacing: 6,
+                    color: WHITE,
+                  }}
+                >
+                  <span style={{ color: GOLD }}>{leg.champ.year} CHAMP</span>
+                  &nbsp;&nbsp;{leg.champ.team.toUpperCase()}
+                  <span style={{ color: CAROLINA_LIGHT }}>&nbsp;&nbsp;· {leg.champ.manager.toUpperCase()}</span>
+                </div>
+              </div>
+            )}
+            {legLocal >= 34 && (
+              <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center", opacity: venueIn * venueOut }}>
+                <div
+                  style={{
+                    ...font,
+                    display: "inline-block",
+                    padding: "16px 46px",
+                    borderRadius: 14,
+                    background: `${NAVY_DEEP}e0`,
+                    border: `2px solid ${v.city ? (isFinal ? GOLD : `${CAROLINA}88`) : `${RED_ISH}55`}`,
+                    boxShadow: isFinal ? `0 10px 50px rgba(0,0,0,.7), 0 0 50px ${GOLD}44` : "0 10px 50px rgba(0,0,0,.7)",
+                    fontSize: isFinal ? 50 : 42,
+                    letterSpacing: 5,
+                    color: v.city ? WHITE : `${WHITE}bb`,
+                  }}
+                >
+                  {v.city ? <span style={{ color: isFinal ? GOLD : CAROLINA_LIGHT }}>→&nbsp;&nbsp;</span> : null}
+                  {venueLabel}
+                </div>
+              </div>
+            )}
+            {/* draft-night photo polaroid (populated via VENUE_PHOTOS as Brett sends them) */}
+            {photo && legLocal >= 38 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 130,
+                  right: 110,
+                  padding: "14px 14px 44px",
+                  background: "#f6f2e8",
+                  borderRadius: 4,
+                  boxShadow: "0 24px 80px rgba(0,0,0,.75)",
+                  transform: `rotate(${leg.champ.year % 2 ? 3.5 : -3}deg) scale(${spring({ frame: legLocal - 38, fps, config: { damping: 13 } })})`,
+                }}
+              >
+                <Img src={staticFile(`photos/${photo}`)} style={{ width: 380, display: "block" }} />
+                <div style={{ ...font, color: "#2a2318", fontSize: 22, letterSpacing: 3, textAlign: "center", marginTop: 10 }}>
+                  {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
+                </div>
+              </div>
+            )}
+            {/* the Emerald Isle punchline — the gag, corrected: the DRAFT made it here */}
+            {v.year === 2021 && legLocal >= PER_LEG + 30 && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 54,
+                  width: "100%",
+                  textAlign: "center",
+                  opacity: interpolate(legLocal, [PER_LEG + 30, PER_LEG + 48], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+                }}
+              >
+                <div
+                  style={{
+                    ...font,
+                    display: "inline-block",
+                    padding: "16px 46px",
+                    borderRadius: 14,
+                    background: `${NAVY_DEEP}e0`,
+                    border: `2px solid ${RED_ISH}77`,
+                    boxShadow: `0 10px 50px rgba(0,0,0,.7), 0 0 40px ${RED_ISH}33`,
+                    fontSize: 42,
+                    letterSpacing: 5,
+                    color: RED_ISH,
+                  }}
+                >
+                  THE DRAFT HAS BEEN TO EMERALD ISLE. THE TROPHY NEVER HAS.
+                </div>
+              </div>
+            )}
+          </>
         );
       })()}
-      {frame >= EMERALD_AT + 55 && frame < TOUR_END + 20 && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 54,
-            width: "100%",
-            textAlign: "center",
-            opacity: interpolate(frame, [EMERALD_AT + 55, EMERALD_AT + 75], [0, 1], {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-            }),
-          }}
-        >
-          <div
-            style={{
-              ...font,
-              display: "inline-block",
-              padding: "16px 46px",
-              borderRadius: 14,
-              background: `${NAVY_DEEP}e0`,
-              border: `2px solid ${RED_ISH}77`,
-              boxShadow: `0 10px 50px rgba(0,0,0,.7), 0 0 40px ${RED_ISH}33`,
-              fontSize: 46,
-              letterSpacing: 5,
-              color: RED_ISH,
-            }}
-          >
-            20 YEARS. NEVER ONCE IN EMERALD ISLE.
-          </div>
-        </div>
-      )}
 
       {/* countdown card */}
       {activeIdx >= 0 &&
@@ -640,7 +768,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         })()}
 
       {/* closer */}
-      {standalone && frame >= TOUR_END + 50 && (
+      {standalone && frame >= COUNTDOWN_END + 40 && (
         <div
           style={{
             ...font,
