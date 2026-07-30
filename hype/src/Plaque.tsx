@@ -193,14 +193,14 @@ export const Plaque: React.FC = () => {
         </div>
       )}
       <Caption from={230} to={415} label="* 2006 · THE AUTOPILOT">
-        LESESNE SKIPPED THE DRAFT. AUTOPICK HANDED HIM LT &amp; BREES.
+        YAHOO SNAKE DRAFT — LESESNE NEVER TOUCHED IT. AUTOPICK TOOK LT &amp; BREES.
         <br />
-        HE WON THE WHOLE THING.
+        SEASON-LONG TOTAL POINTS, NO MATCHUPS. HE WON THE WHOLE THING.
       </Caption>
       <Caption from={450} to={635} label="* 2022 · THE CONCESSION">
-        UP BY LESS THAN A POINT WHEN THE HAMLIN GAME WAS SUSPENDED,
+        HIGGINS PUT KEVIN OVER — THEN HAMLIN WENT DOWN AND THE GAME FROZE.
         <br />
-        SINGER HANDED KEVIN THE RING.
+        SINGER CONCEDED. THE NFL VOIDED THE GAME — SINGER WOULD'VE WON. HE LET IT STAND.
       </Caption>
       <Caption from={670} to={800}>
         <span style={{ color: CAROLINA, fontSize: 40 }}>ONE PLATE GETS ENGRAVED THIS YEAR.</span>

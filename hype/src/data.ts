@@ -294,7 +294,7 @@ export const STANDINGS: Record<number, SeasonRow[]> = {
 };
 
 export const CHAMPIONS: { year: number; team: string; manager: string; key: string }[] = [
-  { year: 2006, team: "LaSizzle", manager: "Brian Lesesne", key: "Lesesne" },  // * Yahoo total-points league; Lesesne AUTO-DRAFTED (LT + Brees fell to him) and won it all
+  { year: 2006, team: "LaSizzle", manager: "Brian Lesesne", key: "Lesesne" },  // * Yahoo SNAKE draft, season-long TOTAL POINTS (no weekly matchups); Lesesne was on autodraft (LT + Brees) and won it all
   { year: 2007, team: "Charm City Smash", manager: "James Farmer", key: "Farmer" },
   { year: 2008, team: "Bronco Bound", manager: "Justin Singer", key: "Singer" },
   { year: 2009, team: "Living Legends", manager: "Brett Link", key: "Link" },
@@ -310,7 +310,7 @@ export const CHAMPIONS: { year: number; team: string; manager: string; key: stri
   { year: 2019, team: "The Rusty Harpoons", manager: "Ned Wellman", key: "Ned" },
   { year: 2020, team: "Singer's Secret Sauce", manager: "Justin Singer", key: "Singer" },
   { year: 2021, team: "Grrrrrreat Expectations", manager: "Rob Parker", key: "Rob" },
-  { year: 2022, team: "poop shoot", manager: "Kevin Criscitiello", key: "Kevin" },  // * The Concession: Kevin's Bengal was knocked out when the Bills-Bengals game was suspended (Damar Hamlin, Wk17); Singer led by <1 pt and conceded the title.
+  { year: 2022, team: "poop shoot", manager: "Kevin Criscitiello", key: "Kevin" },  // * The Concession: Higgins' catch put Kevin OVER as the Hamlin game froze; Singer conceded — then the NFL voided the game entirely, which would have made Singer champ. He let the concession stand.
   { year: 2023, team: "Face G.O.A.T.", manager: "James Farmer", key: "Farmer" },
   { year: 2024, team: "The Very Sharp Harpoons", manager: "Ned Wellman", key: "Ned" },
   { year: 2025, team: "Allen Face One", manager: "James Farmer", key: "Farmer" },

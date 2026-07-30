@@ -60,10 +60,10 @@ Everything Brett has specified so far. Production waits until he gives the go
 
 ## Draft night 2026
 
-- **August 29, 2026, at James Farmer's house in Lothian, MD.** League
+- **August 28, 2026 (Friday), at James Farmer's house in Lothian, MD.** League
   tradition: the reigning champion picks the venue for the next draft — so the
   defending champ (Allen Face One) hosts the 20th-anniversary auction. Closer
-  reads "AUGUST 29 · THE CHAMP'S HOUSE · WASHINGTON, DC".
+  reads "AUGUST 28 · THE CHAMP'S HOUSE · WASHINGTON, DC".
 - Ending sequence: DRAFT NIGHT 2026 → 10-to-1 countdown (each number carries a
   team logo in all-time-rank order, #1 = Farmer) → plaque reprise, empty
   2026-2027 plate glowing → "START THE DRAFT." The video is designed to be
