@@ -105,7 +105,7 @@ const LEGS: Leg[] = (() => {
       len:
         (to ? PER_LEG : PER_LEG_LOST) +
         (LEG_EXTRA[venue.year] || 0) +
-        (VENUE_PHOTOS[venue.year] ? PHOTO_HOLD : 0),
+        PHOTO_HOLD * Math.min(VENUE_PHOTOS[venue.year]?.length ?? 0, 3),
     };
     t += leg.len;
     return leg;
@@ -628,7 +628,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         const venueLabel = v.city
           ? `${isFinal ? "AUG 28, 2026" : `AUG ${v.year}`} · ${(v.venue ? `${v.venue.toUpperCase()} · ` : "")}${v.city.toUpperCase()}${v.uncertain ? " (?)" : ""}`
           : `${v.year} DRAFT · SITE LOST TO HISTORY`;
-        const photo = VENUE_PHOTOS[v.year];
+        const photos = VENUE_PHOTOS[v.year] ?? [];
         return (
           <>
             {legLocal < venueAt - 6 && (
@@ -691,26 +691,46 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                 </div>
               </div>
             )}
-            {/* draft-night photo polaroid (populated via VENUE_PHOTOS as Brett sends them) */}
-            {photo && legLocal >= venueAt + 8 && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 130,
-                  right: 110,
-                  padding: "14px 14px 44px",
-                  background: "#f6f2e8",
-                  borderRadius: 4,
-                  boxShadow: "0 24px 80px rgba(0,0,0,.75)",
-                  transform: `rotate(${leg.champ.year % 2 ? 3.5 : -3}deg) scale(${spring({ frame: legLocal - venueAt - 8, fps, config: { damping: 13 } })})`,
-                }}
-              >
-                <Img src={staticFile(`photos/${photo}`)} style={{ width: 380, display: "block" }} />
-                <div style={{ ...font, color: "#2a2318", fontSize: 22, letterSpacing: 3, textAlign: "center", marginTop: 10 }}>
-                  {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
-                </div>
-              </div>
-            )}
+            {/* draft-night photos burst OUT of the venue point on the map,
+                fanning into polaroid slots (populated via VENUE_PHOTOS) */}
+            {photos.length > 0 && leg.to && (() => {
+              // venue position in screen space (tracks the live camera)
+              const vsx = 960 + (leg.to.x - cam.x) * cam.s;
+              const vsy = 540 + (leg.to.y - cam.y) * cam.s;
+              const SLOTS = [
+                { x: 1430, y: 300, r: 3.5 },
+                { x: 1020, y: 260, r: -2.5 },
+                { x: 1560, y: 700, r: -4 },
+              ];
+              return photos.slice(0, 3).map((f, i) => {
+                const t = legLocal - (venueAt + 12 + i * 16);
+                if (t < 0) return null;
+                const s = spring({ frame: t, fps, config: { damping: 13, stiffness: 110 } });
+                const slot = SLOTS[i];
+                const px = vsx + (slot.x - vsx) * s;
+                const py = vsy + (slot.y - vsy) * s;
+                return (
+                  <div
+                    key={f}
+                    style={{
+                      position: "absolute",
+                      left: px,
+                      top: py,
+                      padding: "12px 12px 38px",
+                      background: "#f6f2e8",
+                      borderRadius: 4,
+                      boxShadow: "0 24px 80px rgba(0,0,0,.75)",
+                      transform: `translate(-50%, -50%) rotate(${slot.r * s}deg) scale(${0.08 + s * 0.92})`,
+                    }}
+                  >
+                    <Img src={staticFile(`photos/${f}`)} style={{ width: 340, display: "block" }} />
+                    <div style={{ ...font, color: "#2a2318", fontSize: 20, letterSpacing: 3, textAlign: "center", marginTop: 9 }}>
+                      {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
             {/* the Emerald Isle punchline — the gag, corrected: the DRAFT made it here */}
             {v.year === 2021 && legLocal >= PER_LEG + 30 && (
               <div

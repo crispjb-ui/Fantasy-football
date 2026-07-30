@@ -79,9 +79,11 @@ export const DRAFT_VENUES: {
   { year: 2026, city: "Lothian, MD", venue: "The Champ's House", lat: 38.8032, lng: -76.648 },
 ];
 
-/* Draft-night photos: year -> filename under hype/public/photos/.
-   Populate as Brett supplies them — the journey shows a polaroid at that stop. */
-export const VENUE_PHOTOS: Record<number, string> = {};
+/* Draft-night photos: venue year -> filenames under hype/public/photos/.
+   Populate as Brett supplies them (up to 3 shown per stop). Each photo
+   springs OUT of the venue point on the map, and the stop automatically
+   holds longer per photo. */
+export const VENUE_PHOTOS: Record<number, string[]> = {};
 
 /* Team-name progressions (year = first season under that name).
    2006 names unknown except the champion (LaSizzle, per the plaque). */
