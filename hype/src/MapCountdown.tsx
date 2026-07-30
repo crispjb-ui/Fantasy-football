@@ -33,7 +33,9 @@ const PREAMBLE = 380; // methodology card: formula builds term by term
 /* Structure (Brett's order): champions & the venues they picked FIRST,
    then the methodology preamble, then the all-time rankings countdown. */
 const JOURNEY_START = ARCS_DONE + 30;
-const PER_LEG = 68; // crown the champ -> comet to the venue they picked
+const PER_LEG = 150; // slow burn: crown the champ, fly, land, read the one-liner
+const PER_LEG_LOST = 100; // lost-site years move quicker so the middle doesn't drag
+const PHOTO_HOLD = 50; // stops with a draft-night photo linger on the polaroid
 // per-leg extras: linger on the Emerald Isle punchline and the Lothian arrival
 const LEG_EXTRA: Record<number, number> = { 2021: 100, 2026: 130 }; // keyed by venue year
 export const MAP_JOURNEY_START = JOURNEY_START;
@@ -100,7 +102,10 @@ const LEGS: Leg[] = (() => {
       to,
       venue,
       start: t,
-      len: PER_LEG + (LEG_EXTRA[venue.year] || 0),
+      len:
+        (to ? PER_LEG : PER_LEG_LOST) +
+        (LEG_EXTRA[venue.year] || 0) +
+        (VENUE_PHOTOS[venue.year] ? PHOTO_HOLD : 0),
     };
     t += leg.len;
     return leg;
@@ -122,6 +127,30 @@ const BYRD_PT = (() => {
   const [x, y] = pt(loc.lng, loc.lat);
   return { x, y };
 })();
+
+/* one line of lore per journey leg, keyed by VENUE year (champ = prior season) */
+const LEG_LINES: Record<number, string> = {
+  2007: "WON IT ON AUTOPILOT. THE LEAGUE NEVER FORGOT.",
+  2008: "CHARM CITY SMASH PICKED CHARM CITY. OBVIOUSLY.",
+  2009: "SINGER'S FIRST RING. THE ROOM? NOBODY REMEMBERS.",
+  2010: "LINK'S ONLY RING. 16 YEARS AND COUNTING.",
+  2011: "KEVIN'S FIRST RING SENT THE LEAGUE TO SIN CITY.",
+  2012: "FARMER BOOKED A RESTAURANT. THE FANCY ERA.",
+  2013: "PEACHES WON. THE VENUE IS ANYONE'S GUESS.",
+  2014: "THE 7-6 MIRACLE EARNED OMAR THE CAPITAL.",
+  2015: "FACE CAPITAL KEPT IT IN THE CAPITAL. WE THINK.",
+  2016: "OMAR AGAIN. THE ROOM? LOST TO HISTORY.",
+  2017: "LESESNE'S THIRD RING. BACK TO THE STRIP.",
+  2018: "THE MOST DOMINANT RUN EVER ENDED AT THE BEACH.",
+  2019: "FARMER TOOK THE LEAGUE TO A BOAT. A LITERAL BOAT.",
+  2020: "NED PICKED GOLF COUNTRY. THE HARPOONS SHARPENED.",
+  2021: "12-0-1. PERFECTION BOUGHT A BEACH HOUSE.",
+  2022: "ROB'S EXPECTATIONS — FINALLY GRRRRRREAT.",
+  2023: "THE CONCEDED RING. KEVIN HOSTED ANYWAY.",
+  2024: "FACE G.O.A.T. DOUBLED DOWN ON VEGAS.",
+  2025: "NED WENT FULL MONTANA. NOBODY KNOWS WHY.",
+  2026: "SIX RINGS IN, THE ROAD ENDS AT FARMER'S HOUSE.",
+};
 
 const TAGLINES: Record<string, string> = {
   Crisp: "2017: THE MOST DOMINANT TITLE RUN EVER. SINCE: PAIN.",
@@ -155,9 +184,9 @@ const KFS: Kf[] = (() => {
   kfs.push({ t: emT + EMERALD_LEG.len + 26, x: 960, y: 540, s: 1 });
   const LOTHIAN = LEGS[LEGS.length - 1];
   const loT = JOURNEY_START + LOTHIAN.start;
-  kfs.push({ t: loT + 40, x: 960, y: 540, s: 1 });
+  kfs.push({ t: loT + 70, x: 960, y: 540, s: 1 });
   if (LOTHIAN.to) {
-    kfs.push({ t: loT + 80, x: LOTHIAN.to.x, y: LOTHIAN.to.y, s: 2.6 });
+    kfs.push({ t: loT + 124, x: LOTHIAN.to.x, y: LOTHIAN.to.y, s: 2.6 });
     kfs.push({ t: loT + LOTHIAN.len - 8, x: LOTHIAN.to.x, y: LOTHIAN.to.y, s: 2.6 });
   }
   kfs.push({ t: PREAMBLE_START + 20, x: 960, y: 540, s: 1 });
@@ -226,7 +255,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
     legNow = LEGS.find((l) => local >= l.start && local < l.start + l.len) ?? null;
     if (legNow) {
       legLocal = local - legNow.start;
-      if (legLocal < 34) champKeyNow = legNow.champ.key;
+      if (legLocal < 60) champKeyNow = legNow.champ.key;
     }
   }
 
@@ -339,7 +368,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
               extrapolateRight: "clamp",
             });
             // persistent venue diamonds for every completed arrival
-            const dots = LEGS.filter((l) => l.to && local >= l.start + 52);
+            const dots = LEGS.filter((l) => l.to && local >= l.start + 124);
             const diamond = (x: number, y: number, r: number, o: number, key: string) => (
               <path
                 key={key}
@@ -353,11 +382,11 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
             let active: React.ReactNode = null;
             if (legNow) {
               const leg = legNow;
-              const crownP = Math.min(1, legLocal / 26);
+              const crownP = Math.min(1, legLocal / 34);
               active = (
                 <g>
                   {/* crown flare at the champion's home */}
-                  {legLocal < 30 && (
+                  {legLocal < 40 && (
                     <>
                       <circle cx={leg.from.x} cy={leg.from.y} r={(14 + crownP * 42) * k} fill="none"
                         stroke={GOLD} strokeWidth={2.6 * (1 - crownP) * k} opacity={1 - crownP * 0.85} />
@@ -366,8 +395,8 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                     </>
                   )}
                   {/* comet to the venue (when we know where it was) */}
-                  {leg.to && legLocal >= 20 && (() => {
-                    const p = Math.min(1, (legLocal - 20) / 32);
+                  {leg.to && legLocal >= 60 && (() => {
+                    const p = Math.min(1, (legLocal - 60) / 56);
                     const eased = Easing.inOut(Easing.quad)(p);
                     const from: [number, number] = [leg.from.x, leg.from.y];
                     const to: [number, number] = [leg.to.x, leg.to.y];
@@ -379,7 +408,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                     if (p < 1) {
                       for (let j = 0; j < 10; j++) trail.push(bez(Math.max(0, eased - j * 0.05), from, ctrl, to));
                     }
-                    const flareP = Math.min(1, Math.max(0, (legLocal - 52) / 16));
+                    const flareP = Math.min(1, Math.max(0, (legLocal - 116) / 20));
                     return (
                       <g>
                         {trail.map(([tx, ty], j) => (
@@ -585,9 +614,11 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         const leg = legNow;
         const v = leg.venue;
         const isFinal = v.year === 2026;
+        /* comet legs: pill hands off as the comet flies; lost legs sooner */
+        const venueAt = leg.to ? 96 : 56;
         const champIn = spring({ frame: legLocal, fps, config: { damping: 14, stiffness: 160 } });
-        const champOut = interpolate(legLocal, [30, 40], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-        const venueIn = spring({ frame: legLocal - 34, fps, config: { damping: 14, stiffness: 160 } });
+        const champOut = interpolate(legLocal, [venueAt - 22, venueAt - 8], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const venueIn = spring({ frame: legLocal - venueAt, fps, config: { damping: 14, stiffness: 160 } });
         const venueOut = interpolate(
           legLocal,
           v.year === 2021 ? [PER_LEG + 10, PER_LEG + 26] : [leg.len - 8, leg.len],
@@ -600,7 +631,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         const photo = VENUE_PHOTOS[v.year];
         return (
           <>
-            {legLocal < 40 && (
+            {legLocal < venueAt - 6 && (
               <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center", opacity: champIn * champOut }}>
                 <div
                   style={{
@@ -622,7 +653,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                 </div>
               </div>
             )}
-            {legLocal >= 34 && (
+            {legLocal >= venueAt && (
               <div style={{ position: "absolute", bottom: 54, width: "100%", textAlign: "center", opacity: venueIn * venueOut }}>
                 <div
                   style={{
@@ -640,11 +671,28 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                 >
                   {v.city ? <span style={{ color: isFinal ? GOLD : CAROLINA_LIGHT }}>→&nbsp;&nbsp;</span> : null}
                   {venueLabel}
+                  {LEG_LINES[v.year] && (
+                    <div
+                      style={{
+                        ...font,
+                        fontSize: 25,
+                        letterSpacing: 3,
+                        color: CAROLINA_LIGHT,
+                        marginTop: 12,
+                        opacity: interpolate(legLocal, [venueAt + 16, venueAt + 30], [0, 1], {
+                          extrapolateLeft: "clamp",
+                          extrapolateRight: "clamp",
+                        }),
+                      }}
+                    >
+                      {LEG_LINES[v.year]}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
             {/* draft-night photo polaroid (populated via VENUE_PHOTOS as Brett sends them) */}
-            {photo && legLocal >= 38 && (
+            {photo && legLocal >= venueAt + 8 && (
               <div
                 style={{
                   position: "absolute",
@@ -654,7 +702,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                   background: "#f6f2e8",
                   borderRadius: 4,
                   boxShadow: "0 24px 80px rgba(0,0,0,.75)",
-                  transform: `rotate(${leg.champ.year % 2 ? 3.5 : -3}deg) scale(${spring({ frame: legLocal - 38, fps, config: { damping: 13 } })})`,
+                  transform: `rotate(${leg.champ.year % 2 ? 3.5 : -3}deg) scale(${spring({ frame: legLocal - venueAt - 8, fps, config: { damping: 13 } })})`,
                 }}
               >
                 <Img src={staticFile(`photos/${photo}`)} style={{ width: 380, display: "block" }} />
