@@ -51,6 +51,55 @@ const T_TICKS = T_CLOSER + CLOSER_LEN;
 const T_FINALE = T_TICKS + TICKS_LEN;
 export const FILM_DURATION = T_FINALE + PLAQUE_FINALE_DURATION;
 
+/* ---- Soundtrack: six league tracks as a DJ-set medley --------------------
+   Five sit at ~123.5 BPM (seamless crossfades); At Night (~112.5) opens, so
+   the tempo LIFTS when the rankings kick in. Each track enters at its
+   hottest section (offsets from energy analysis). Crossfades are centered
+   on scene boundaries. Files: hype/public/music/ (committed to the repo). */
+const MAP_COUNTDOWN_AT = T_MAP + 660; // arcs done + preamble -> first ranking card
+const MAP_RELAY_AT = T_MAP + 2110; // countdown done -> champions relay
+const FADE = 45; // 1.5s each side of a boundary
+
+const MEDLEY = [
+  // moody build for the cold open + Chapel Hill + methodology preamble
+  { src: "music/at_night.mp3", from: 0, to: MAP_COUNTDOWN_AT, offset: 0 },
+  // crowd pick #1 carries the rankings countdown, entering on its drop
+  { src: "music/candy.mp3", from: MAP_COUNTDOWN_AT, to: MAP_RELAY_AT, offset: 30 * FILM_FPS },
+  // rave energy for the champions relay across the map
+  { src: "music/rave_generator.mp3", from: MAP_RELAY_AT, to: T_PLAQUE, offset: 70 * FILM_FPS },
+  // plaque story + Face saga + record cards ride Running's build/drop cycles
+  { src: "music/running.mp3", from: T_PLAQUE, to: T_LASTYEAR, offset: 35 * FILM_FPS },
+  // trash-talk block: 2025 recap, trade ledger, stakes, #FHO
+  { src: "music/sexyback.mp3", from: T_LASTYEAR, to: T_CLOSER, offset: 58 * FILM_FPS },
+  // crowd pick #2: the riff everyone knows = the 10..1 slam into the plaque
+  { src: "music/teen_spirit.mp3", from: T_CLOSER, to: FILM_DURATION, offset: 32 * FILM_FPS },
+];
+
+const Soundtrack: React.FC = () => (
+  <>
+    {MEDLEY.map((t, i) => {
+      const start = Math.max(0, t.from - FADE);
+      const len = Math.min(t.to + FADE, FILM_DURATION) - start;
+      const fadeIn = i === 0 ? 20 : 2 * FADE;
+      const fadeOut = i === MEDLEY.length - 1 ? 40 : 2 * FADE;
+      return (
+        <Sequence key={t.src} from={start} durationInFrames={len}>
+          <Audio
+            src={staticFile(t.src)}
+            startFrom={t.offset}
+            volume={(f) =>
+              interpolate(f, [0, fadeIn, len - fadeOut, len], [0, 0.9, 0.9, 0], {
+                extrapolateLeft: "clamp",
+                extrapolateRight: "clamp",
+              })
+            }
+          />
+        </Sequence>
+      );
+    })}
+  </>
+);
+
 const font: React.CSSProperties = {
   fontFamily: "Arial, 'DejaVu Sans', sans-serif",
   fontWeight: 900,
@@ -537,8 +586,8 @@ const FinalCountdown: React.FC = () => {
 
 export const Film: React.FC = () => (
   <AbsoluteFill style={{ background: NAVY_DEEP }}>
-    {/* placeholder score synthesized locally — swap for public/music.mp3 when Brett sends one */}
-    <Audio src={staticFile("score.wav")} />
+    {/* six-track league medley — see MEDLEY above */}
+    <Soundtrack />
     <Sequence from={0} durationInFrames={OPEN_LEN}>
       <Opening />
     </Sequence>
