@@ -103,8 +103,10 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
   ], // Emerald Isle / Moonrakers (2021-6 garden, 2021-7 couple, 2021-8 candid benched — swappable)
   2012: [
     "2012-2.jpg|THE SAUTÉ TAB — $983.40. 31 MILLER LITES. 51 ESPRESSO SHOTS.",
+    "2012-3.jpg|BALTIMORE 2012 — EVERYONE STILL HAD THEIR WHOLE LIVES AHEAD OF THEM",
     "2012-1.jpg",
   ], // Sauté Baltimore — the receipt survives
+  2014: ["2014-1.jpg|DC 2014 — DRAFT BOARD ON THE TV, JERSEY ON, SHADES ON"],
   2017: [
     "2017-2.jpg|6:30AM — SCOTTY NGUYEN COMING OUT OF THE CASINO, BABY",
     "2017-3.jpg|DRAFT WEEKEND 2017 WAS MAYWEATHER–McGREGOR WEEKEND",
