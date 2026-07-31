@@ -113,6 +113,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
   ],
   2019: ["2019-1.jpg"], // the boat party, mid-lean
   2020: ["2020-1.jpg|PINEHURST 2020 — PING PONG THROUGH THE KITCHEN WINDOW"],
+  2022: ["2022-1.jpg", "2022-2.jpg"], // Charlottesville beer garden at dusk + the spread
   2023: [
     "2023-1.jpg|THE MIDNIGHT RANT — EVERYONE WAS IN BED BY 11:30",
     "2023-2.jpg|THE PART OF THE NIGHT FARMER APPROVED OF",
