@@ -119,8 +119,10 @@ const COUNTDOWN_END = COUNTDOWN_START + PER_STOP * 10;
 export const MAP_DURATION = COUNTDOWN_END + 200; // standalone closer
 export const MAP_EMBED_DURATION = COUNTDOWN_END + 60;
 export const MAP_PREAMBLE_START = PREAMBLE_START;
-/* music switch point: the 2011 leg — the league hits Vegas for the first time */
+/* music switch points: era boundaries in the journey */
 export const MAP_VEGAS_AT = JOURNEY_START + (LEGS.find((l) => l.venue.year === 2011)?.start ?? 0);
+export const MAP_BEACH_AT = JOURNEY_START + (LEGS.find((l) => l.venue.year === 2018)?.start ?? 0);
+export const MAP_MODERN_AT = JOURNEY_START + (LEGS.find((l) => l.venue.year === 2022)?.start ?? 0);
 const EMERALD_LEG = LEGS.find((l) => l.venue.year === 2021)!;
 const BYRD_PT = (() => {
   const loc = LOCATIONS.Byrd;

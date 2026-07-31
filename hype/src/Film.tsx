@@ -10,7 +10,14 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { MapCountdown, MAP_EMBED_DURATION, MAP_PREAMBLE_START, MAP_VEGAS_AT } from "./MapCountdown";
+import {
+  MapCountdown,
+  MAP_EMBED_DURATION,
+  MAP_PREAMBLE_START,
+  MAP_VEGAS_AT,
+  MAP_BEACH_AT,
+  MAP_MODERN_AT,
+} from "./MapCountdown";
 import { Plaque, PLAQUE_DURATION, PlaqueFinale, PLAQUE_FINALE_DURATION } from "./Plaque";
 import { ALL_TIME, NAME_HISTORY, STANDINGS } from "./data";
 
@@ -61,14 +68,18 @@ const FADE = 45; // 1.5s each side of a boundary
 const MEDLEY = [
   // moody build: cold open + Chapel Hill + arcs + the Yahoo-era journey legs
   { src: "music/at_night.mp3", from: 0, to: T_MAP + MAP_VEGAS_AT, offset: 0 },
-  // rave drops in the moment the league first hits Vegas (2011), rides the journey home
-  { src: "music/rave_generator.mp3", from: T_MAP + MAP_VEGAS_AT, to: T_MAP + MAP_PREAMBLE_START, offset: 70 * FILM_FPS },
+  // rave drops the moment the league first hits Vegas (2011) — the Vegas/DC era
+  { src: "music/rave_generator.mp3", from: T_MAP + MAP_VEGAS_AT, to: T_MAP + MAP_BEACH_AT, offset: 70 * FILM_FPS },
+  // beach era: Folly Beach, the boat party, Emerald Isle — the smolder demands it
+  { src: "music/sexyback.mp3", from: T_MAP + MAP_BEACH_AT, to: T_MAP + MAP_MODERN_AT, offset: 58 * FILM_FPS },
+  // modern era: Charlottesville -> Richmond -> Vegas -> Bozeman -> Lothian arrival
+  { src: "music/running.mp3", from: T_MAP + MAP_MODERN_AT, to: T_MAP + MAP_PREAMBLE_START, offset: 35 * FILM_FPS },
   // crowd pick #1: methodology breakdown, then the rankings countdown on its drops
   { src: "music/candy.mp3", from: T_MAP + MAP_PREAMBLE_START, to: T_PLAQUE, offset: 80 * FILM_FPS },
-  // plaque story + Face saga + record cards ride Running's build/drop cycles
-  { src: "music/running.mp3", from: T_PLAQUE, to: T_LASTYEAR, offset: 35 * FILM_FPS },
-  // trash-talk block: 2025 recap, trade ledger, stakes, #FHO
-  { src: "music/sexyback.mp3", from: T_LASTYEAR, to: T_CLOSER, offset: 58 * FILM_FPS },
+  // At Night returns at its PEAK section for the plaque story + Face saga + records
+  { src: "music/at_night.mp3", from: T_PLAQUE, to: T_LASTYEAR, offset: 95 * FILM_FPS },
+  // Rave Generator's late drops back the trash-talk block: 2025 recap, ledger, stakes, #FHO
+  { src: "music/rave_generator.mp3", from: T_LASTYEAR, to: T_CLOSER, offset: 230 * FILM_FPS },
   // crowd pick #2: the riff everyone knows = the 10..1 slam into the plaque
   { src: "music/teen_spirit.mp3", from: T_CLOSER, to: FILM_DURATION, offset: 32 * FILM_FPS },
 ];
@@ -81,7 +92,7 @@ const Soundtrack: React.FC = () => (
       const fadeIn = i === 0 ? 20 : 2 * FADE;
       const fadeOut = i === MEDLEY.length - 1 ? 40 : 2 * FADE;
       return (
-        <Sequence key={t.src} from={start} durationInFrames={len}>
+        <Sequence key={`${t.src}-${i}`} from={start} durationInFrames={len}>
           <Audio
             src={staticFile(t.src)}
             startFrom={t.offset}
