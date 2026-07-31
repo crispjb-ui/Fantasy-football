@@ -120,7 +120,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2023-1.jpg|THE MIDNIGHT RANT — EVERYONE WAS IN BED BY 11:30",
     "2023-2.jpg|THE PART OF THE NIGHT FARMER APPROVED OF",
   ],
-  2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
+  2024: ["2024-2.jpg", "2024-3.jpg", "2024-1.jpg"], // Vegas: starfish, desert golf squad, steakhouse toast
   2025: [
     "2025-2.jpg|BOZEMAN 2025 — DRAFT WEEKEND AT THE RODEO",
     "2025-3.jpg|THE HARPOONS FINALLY WENT FISHING",
