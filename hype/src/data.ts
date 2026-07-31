@@ -83,7 +83,9 @@ export const DRAFT_VENUES: {
    Populate as Brett supplies them (up to 3 shown per stop). Each photo
    springs OUT of the venue point on the map, and the stop automatically
    holds longer per photo. */
-export const VENUE_PHOTOS: Record<number, string[]> = {};
+export const VENUE_PHOTOS: Record<number, string[]> = {
+  2018: ["2018-4.jpg", "2018-1.jpg", "2018-2.jpg", "2018-3.jpg"], // Folly Beach weekend
+};
 
 /* Team-name progressions (year = first season under that name).
    2006 names unknown except the champion (LaSizzle, per the plaque). */
