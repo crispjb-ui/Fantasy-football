@@ -121,6 +121,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2023-2.jpg|THE PART OF THE NIGHT FARMER APPROVED OF",
   ],
   2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
+  2025: ["2025-1.jpg"], // Bozeman — riverside under the mountains
 };
 
 /* Team-name progressions (year = first season under that name).
