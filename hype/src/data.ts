@@ -113,7 +113,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2017-1.jpg|VEGAS 2017 — THE UNOFFICIAL THEME SONG",
     "2017-4.jpg", // ale-house booth, phone propped, twenties on the table
   ],
-  2019: ["2019-1.jpg"], // the boat party, mid-lean
+  2019: ["2019-1.jpg", "2019-2.jpg"], // the boat party: rail lean + dance-floor smolder
   2020: ["2020-1.jpg|PINEHURST 2020 — PING PONG THROUGH THE KITCHEN WINDOW"],
   2022: ["2022-1.jpg", "2022-2.jpg"], // Charlottesville beer garden at dusk + the spread
   2023: [
