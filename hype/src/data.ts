@@ -105,7 +105,11 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2012-2.jpg|THE SAUTÉ TAB — $983.40. 31 MILLER LITES. 51 ESPRESSO SHOTS.",
     "2012-1.jpg",
   ], // Sauté Baltimore — the receipt survives
-  2017: ["2017-1.jpg|VEGAS 2017 — THE UNOFFICIAL THEME SONG"],
+  2017: [
+    "2017-2.jpg|6:30AM — SCOTTY NGUYEN COMING OUT OF THE CASINO, BABY",
+    "2017-3.jpg|DRAFT WEEKEND 2017 WAS MAYWEATHER–McGREGOR WEEKEND",
+    "2017-1.jpg|VEGAS 2017 — THE UNOFFICIAL THEME SONG",
+  ],
   2020: ["2020-1.jpg|PINEHURST 2020 — PING PONG THROUGH THE KITCHEN WINDOW"],
   2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
 };
