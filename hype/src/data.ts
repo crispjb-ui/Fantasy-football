@@ -95,6 +95,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2021-5.jpg", // life-jacket celebration
     "2021-7.jpg", // the restaurant couple
   ], // Emerald Isle / Moonrakers (2021-6 garden + 2021-8 candid benched — swappable)
+  2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
 };
 
 /* Team-name progressions (year = first season under that name).
