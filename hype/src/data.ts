@@ -109,6 +109,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2017-2.jpg|6:30AM — SCOTTY NGUYEN COMING OUT OF THE CASINO, BABY",
     "2017-3.jpg|DRAFT WEEKEND 2017 WAS MAYWEATHER–McGREGOR WEEKEND",
     "2017-1.jpg|VEGAS 2017 — THE UNOFFICIAL THEME SONG",
+    "2017-4.jpg", // ale-house booth, phone propped, twenties on the table
   ],
   2020: ["2020-1.jpg|PINEHURST 2020 — PING PONG THROUGH THE KITCHEN WINDOW"],
   2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
