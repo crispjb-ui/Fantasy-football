@@ -731,7 +731,10 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                       transform: `translate(-50%, -50%) rotate(${slot.r * s}deg) scale(${0.08 + s * 0.92})`,
                     }}
                   >
-                    <Img src={staticFile(`photos/${f}`)} style={{ width: w, display: "block" }} />
+                    <Img
+                      src={staticFile(`photos/${f}`)}
+                      style={{ width: w, maxHeight: Math.round(w * 1.15), objectFit: "cover", objectPosition: "50% 28%", display: "block" }}
+                    />
                     <div style={{ ...font, color: "#2a2318", fontSize: 19, letterSpacing: 3, textAlign: "center", marginTop: 8 }}>
                       {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
                     </div>
