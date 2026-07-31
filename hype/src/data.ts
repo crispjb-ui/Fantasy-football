@@ -99,8 +99,9 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2021-3.jpg", // boat cabin six
     "2021-10.jpg", // espresso martini + tongue
     "2021-5.jpg", // life-jacket celebration
-    "2021-7.jpg", // the restaurant couple
-  ], // Emerald Isle / Moonrakers (2021-6 garden + 2021-8 candid benched — swappable)
+    "2021-11.jpg", // boat-tower finger gun, good vibes only
+  ], // Emerald Isle / Moonrakers (2021-6 garden, 2021-7 couple, 2021-8 candid benched — swappable)
+  2020: ["2020-1.jpg|PINEHURST 2020 — PING PONG THROUGH THE KITCHEN WINDOW"],
   2024: ["2024-2.jpg", "2024-1.jpg"], // Vegas: hotel-floor starfish leads, steakhouse toast behind
 };
 
