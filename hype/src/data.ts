@@ -84,7 +84,13 @@ export const DRAFT_VENUES: {
    springs OUT of the venue point on the map, and the stop automatically
    holds longer per photo. */
 export const VENUE_PHOTOS: Record<number, string[]> = {
-  2018: ["2018-4.jpg", "2018-1.jpg", "2018-2.jpg", "2018-3.jpg"], // Folly Beach weekend
+  2018: [
+    "2018-4.jpg",
+    "2018-1.jpg",
+    "2018-5.jpg|THE APP PROPOSAL — A BID TO CONTROL THE LEAGUE",
+    "2018-2.jpg",
+    "2018-3.jpg",
+  ], // Folly Beach weekend
   2021: [
     "2021-1.jpg", // lighthouse bow, all ten — the hero
     "2021-2.jpg", // Moonrakers long table

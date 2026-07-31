@@ -710,7 +710,9 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
               const n = Math.min(photos.length, SLOTS.length);
               // polaroids shrink as the pile grows so the collage still fits
               const w = n <= 3 ? 340 : n <= 5 ? 290 : 250;
-              return photos.slice(0, SLOTS.length).map((f, i) => {
+              return photos.slice(0, SLOTS.length).map((entry, i) => {
+                // "file.jpg|CUSTOM CAPTION" overrides the default city-year label
+                const [f, customCap] = entry.split("|");
                 const t = legLocal - (venueAt + 12 + i * 14);
                 if (t < 0) return null;
                 const s = spring({ frame: t, fps, config: { damping: 13, stiffness: 110 } });
@@ -736,7 +738,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                       style={{ width: w, maxHeight: Math.round(w * 1.15), objectFit: "cover", objectPosition: "50% 28%", display: "block" }}
                     />
                     <div style={{ ...font, color: "#2a2318", fontSize: 19, letterSpacing: 3, textAlign: "center", marginTop: 8 }}>
-                      {v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year}
+                      {customCap || (v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year)}
                     </div>
                   </div>
                 );
