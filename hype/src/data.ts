@@ -85,7 +85,16 @@ export const DRAFT_VENUES: {
    holds longer per photo. */
 export const VENUE_PHOTOS: Record<number, string[]> = {
   2018: ["2018-4.jpg", "2018-1.jpg", "2018-2.jpg", "2018-3.jpg"], // Folly Beach weekend
-  2021: ["2021-1.jpg", "2021-2.jpg", "2021-3.jpg", "2021-4.jpg", "2021-5.jpg", "2021-6.jpg"], // Emerald Isle / Moonrakers — lighthouse boat shot leads
+  2021: [
+    "2021-1.jpg", // lighthouse bow, all ten — the hero
+    "2021-2.jpg", // Moonrakers long table
+    "2021-4.jpg", // overhead deck, all ten
+    "2021-9.jpg", // face-down at dinner, life goes on around him
+    "2021-3.jpg", // boat cabin six
+    "2021-10.jpg", // espresso martini + tongue
+    "2021-5.jpg", // life-jacket celebration
+    "2021-7.jpg", // the restaurant couple
+  ], // Emerald Isle / Moonrakers (2021-6 garden + 2021-8 candid benched — swappable)
 };
 
 /* Team-name progressions (year = first season under that name).
