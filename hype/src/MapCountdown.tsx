@@ -741,7 +741,9 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
                       src={staticFile(`photos/${f}`)}
                       style={{ width: w, maxHeight: Math.round(w * 1.15), objectFit: "cover", objectPosition: "50% 28%", display: "block" }}
                     />
-                    <div style={{ ...font, color: "#2a2318", fontSize: 19, letterSpacing: 3, textAlign: "center", marginTop: 8 }}>
+                    {/* width pinned to the photo: without it a long caption
+                        stretches the polaroid sideways into a white void */}
+                    <div style={{ ...font, width: w, color: "#2a2318", fontSize: 19, letterSpacing: 3, lineHeight: 1.3, textAlign: "center", marginTop: 8 }}>
                       {customCap || (v.city ? `${v.city.toUpperCase()} · ${v.year}` : v.year)}
                     </div>
                   </div>
