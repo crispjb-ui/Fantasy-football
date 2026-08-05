@@ -30,8 +30,12 @@ Everything Brett has specified so far. Production waits until he gives the go
   2015 DC, 2016 Atlanta, 2017 Vegas, 2018→2026 all known — **every live-era
   room is confirmed, no question marks left.** Atlanta hosted twice (2013 and
   2016), which is why 2016 is nailed down.
+- **James Farmer is the commissioner**, and his league nickname is "Curry" —
+  hence his 2008 team name, "Curry's Sauce".
 - **2024 Vegas draft weekend doubled as Curry's bachelor party** — the whole
-  room wore Steph Curry Warriors jerseys (photo `2024-4.jpg`).
+  room wore Steph Curry Warriors jerseys (photo `2024-4.jpg`). Farmer won 2023
+  as Face G.O.A.T., so he picked the room himself: the commissioner won the
+  title and then sent the league to his own bachelor party.
 
 ## Look & feel
 

@@ -132,7 +132,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
   ],
   2024: [
     "2024-2.jpg",
-    "2024-4.jpg|VEGAS 2024 — CURRY'S BACHELOR PARTY. EVERYONE IN STEPH JERSEYS.",
+    "2024-4.jpg|THE COMMISH'S BACHELOR PARTY — EVERYONE IN STEPH CURRY JERSEYS",
     "2024-3.jpg",
     "2024-1.jpg",
   ], // Vegas: starfish, the Curry-jersey bachelor party, desert golf, steakhouse toast
