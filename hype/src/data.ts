@@ -107,6 +107,7 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2021-11.jpg", // boat-tower finger gun, good vibes only
   ], // Emerald Isle / Moonrakers (2021-6 garden, 2021-7 couple, 2021-8 candid benched — swappable)
   2012: [
+    "2012-4.jpg|SAUTÉ 2012 — THE WHOLE DRAFT RAN OFF ONE LAPTOP",
     "2012-2.jpg|THE SAUTÉ TAB — $983.40. 31 MILLER LITES. 51 ESPRESSO SHOTS.",
     "2012-3.jpg|BALTIMORE 2012 — EVERYONE STILL HAD THEIR WHOLE LIVES AHEAD OF THEM",
     "2012-1.jpg",
@@ -125,7 +126,12 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
     "2023-1.jpg|THE MIDNIGHT RANT — EVERYONE WAS IN BED BY 11:30",
     "2023-2.jpg|THE PART OF THE NIGHT FARMER APPROVED OF",
   ],
-  2024: ["2024-2.jpg", "2024-3.jpg", "2024-1.jpg"], // Vegas: starfish, desert golf squad, steakhouse toast
+  2024: [
+    "2024-2.jpg",
+    "2024-4.jpg|VEGAS 2024 — MATCHING WARRIORS JERSEYS, POOLSIDE",
+    "2024-3.jpg",
+    "2024-1.jpg",
+  ], // Vegas: starfish, poolside jerseys, desert golf squad, steakhouse toast
   2025: [
     "2025-2.jpg|BOZEMAN 2025 — DRAFT WEEKEND AT THE RODEO",
     "2025-3.jpg|THE HARPOONS FINALLY WENT FISHING",
