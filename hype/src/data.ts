@@ -73,9 +73,9 @@ export const DRAFT_VENUES: {
   { year: 2013, city: "Atlanta, GA", lat: 33.749, lng: -84.388 },
   { year: 2014, city: "Washington, DC", lat: 38.9072, lng: -77.0369 },
   { year: 2015, city: "Washington, DC", lat: 38.9072, lng: -77.0369 },
-  // Brett remembers two Atlanta drafts; 2016 is the only unaccounted-for slot
-  // in the live era, so the second one lands here. Omar won 2015 and picked it.
-  { year: 2016, city: "Atlanta, GA", lat: 33.749, lng: -84.388, uncertain: true },
+  // Two Atlanta drafts, confirmed by Brett: 2013 and this one. Omar won 2015
+  // and sent the league back to Lesesne's city.
+  { year: 2016, city: "Atlanta, GA", lat: 33.749, lng: -84.388 },
   { year: 2017, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
   { year: 2018, city: "Folly Beach, SC", lat: 32.655, lng: -79.9403 },
   { year: 2019, city: "New York City", lat: 40.7128, lng: -74.006 }, // boat party was part of the weekend, not the draft itself

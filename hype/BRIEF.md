@@ -28,9 +28,8 @@ Everything Brett has specified so far. Production waits until he gives the go
   "Baltimore 2008" entry was the league misremembering and is gone). Live era
   confirmed so far: 2011 Vegas, 2012 Baltimore (Sauté), 2013 Atlanta, 2014 DC,
   2015 DC, 2016 Atlanta, 2017 Vegas, 2018→2026 all known — **every live-era
-  room is now accounted for.** 2016 is the one reconstructed rather than
-  remembered (Brett recalls two Atlanta drafts and 2016 was the only open
-  slot), so it still renders with a "(?)".
+  room is confirmed, no question marks left.** Atlanta hosted twice (2013 and
+  2016), which is why 2016 is nailed down.
 - **2024 Vegas draft weekend doubled as Curry's bachelor party** — the whole
   room wore Steph Curry Warriors jerseys (photo `2024-4.jpg`).
 
