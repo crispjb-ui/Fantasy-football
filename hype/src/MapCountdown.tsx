@@ -134,13 +134,13 @@ const BYRD_PT = (() => {
 const LEG_LINES: Record<number, string> = {
   2007: "WON IT ON AUTOPILOT. THE LEAGUE NEVER FORGOT.",
   2008: "CHARM CITY SMASH PICKED CHARM CITY. OBVIOUSLY.",
-  2009: "SINGER'S FIRST RING. THE ROOM? NOBODY REMEMBERS.",
+  2009: "SINGER'S FIRST RING — WON FROM THE COUCH. ONLINE ERA.",
   2010: "LINK'S ONLY RING. 16 YEARS AND COUNTING.",
-  2011: "KEVIN'S FIRST RING SENT THE LEAGUE TO SIN CITY.",
+  2011: "KEVIN'S RING LAUNCHED THE FIRST LIVE DRAFT. VEGAS, OBVIOUSLY.",
   2012: "FARMER BOOKED A RESTAURANT. THE FANCY ERA.",
-  2013: "PEACHES WON. THE VENUE IS ANYONE'S GUESS.",
+  2013: "PEACHES TOOK THE LEAGUE HOME TO ATLANTA.",
   2014: "THE 7-6 MIRACLE EARNED OMAR THE CAPITAL.",
-  2015: "FACE CAPITAL KEPT IT IN THE CAPITAL. WE THINK.",
+  2015: "FACE CAPITAL KEPT IT IN THE CAPITAL. OF COURSE HE DID.",
   2016: "OMAR AGAIN. THE ROOM? LOST TO HISTORY.",
   2017: "LESESNE'S THIRD RING. BACK TO THE STRIP.",
   2018: "THE MOST DOMINANT RUN EVER ENDED AT THE BEACH.",
@@ -629,7 +629,7 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
         );
         const venueLabel = v.city
           ? `${isFinal ? "AUG 28, 2026" : `AUG ${v.year}`} · ${(v.venue ? `${v.venue.toUpperCase()} · ` : "")}${v.city.toUpperCase()}${v.uncertain ? " (?)" : ""}`
-          : `${v.year} DRAFT · SITE LOST TO HISTORY`;
+          : `${v.year} · ${v.note ?? "SITE LOST TO HISTORY"}`;
         const photos = VENUE_PHOTOS[v.year] ?? [];
         return (
           <>
