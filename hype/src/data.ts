@@ -132,10 +132,10 @@ export const VENUE_PHOTOS: Record<number, string[]> = {
   ],
   2024: [
     "2024-2.jpg",
-    "2024-4.jpg|VEGAS 2024 — MATCHING WARRIORS JERSEYS, POOLSIDE",
+    "2024-4.jpg|VEGAS 2024 — CURRY'S BACHELOR PARTY. EVERYONE IN STEPH JERSEYS.",
     "2024-3.jpg",
     "2024-1.jpg",
-  ], // Vegas: starfish, poolside jerseys, desert golf squad, steakhouse toast
+  ], // Vegas: starfish, the Curry-jersey bachelor party, desert golf, steakhouse toast
   2025: [
     "2025-2.jpg|BOZEMAN 2025 — DRAFT WEEKEND AT THE RODEO",
     "2025-3.jpg|THE HARPOONS FINALLY WENT FISHING",

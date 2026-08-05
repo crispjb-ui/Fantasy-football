@@ -31,6 +31,8 @@ Everything Brett has specified so far. Production waits until he gives the go
   room is now accounted for.** 2016 is the one reconstructed rather than
   remembered (Brett recalls two Atlanta drafts and 2016 was the only open
   slot), so it still renders with a "(?)".
+- **2024 Vegas draft weekend doubled as Curry's bachelor party** — the whole
+  room wore Steph Curry Warriors jerseys (photo `2024-4.jpg`).
 
 ## Look & feel
 
