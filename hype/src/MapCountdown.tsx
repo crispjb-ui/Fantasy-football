@@ -133,14 +133,14 @@ const BYRD_PT = (() => {
 /* one line of lore per journey leg, keyed by VENUE year (champ = prior season) */
 const LEG_LINES: Record<number, string> = {
   2007: "WON IT ON AUTOPILOT. THE LEAGUE NEVER FORGOT.",
-  2008: "CHARM CITY SMASH PICKED CHARM CITY. OBVIOUSLY.",
-  2009: "SINGER'S FIRST RING. THE ROOM? NOBODY REMEMBERS.",
+  2008: "CHARM CITY SMASH WON. THE DRAFT WAS STILL A BROWSER TAB.",
+  2009: "SINGER'S FIRST RING. NOBODY LEFT THE HOUSE FOR IT.",
   2010: "LINK'S ONLY RING. 16 YEARS AND COUNTING.",
-  2011: "KEVIN'S FIRST RING SENT THE LEAGUE TO SIN CITY.",
+  2011: "KEVIN'S RING PUT ALL TEN IN ONE ROOM — AND THAT ROOM WAS VEGAS.",
   2012: "FARMER BOOKED A RESTAURANT. THE FANCY ERA.",
-  2013: "PEACHES WON. THE VENUE IS ANYONE'S GUESS.",
+  2013: "PEACHES WON AND MADE EVERYONE COME TO ATLANTA.",
   2014: "THE 7-6 MIRACLE EARNED OMAR THE CAPITAL.",
-  2015: "FACE CAPITAL KEPT IT IN THE CAPITAL. WE THINK.",
+  2015: "FACE CAPITAL KEPT IT IN THE CAPITAL. BACK-TO-BACK DC.",
   2016: "OMAR AGAIN. THE ROOM? LOST TO HISTORY.",
   2017: "LESESNE'S THIRD RING. BACK TO THE STRIP.",
   2018: "THE MOST DOMINANT RUN EVER ENDED AT THE BEACH.",
@@ -628,8 +628,10 @@ export const MapCountdown: React.FC<{ standalone?: boolean }> = ({ standalone = 
           { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
         );
         const venueLabel = v.city
-          ? `${isFinal ? "AUG 28, 2026" : `AUG ${v.year}`} · ${(v.venue ? `${v.venue.toUpperCase()} · ` : "")}${v.city.toUpperCase()}${v.uncertain ? " (?)" : ""}`
-          : `${v.year} DRAFT · SITE LOST TO HISTORY`;
+          ? `${isFinal ? "AUG 28, 2026" : `AUG ${v.year}`} · ${(v.venue ? `${v.venue.toUpperCase()} · ` : "")}${v.city.toUpperCase()}${v.uncertain ? " (?)" : ""}${v.first ? " · THE FIRST LIVE DRAFT" : ""}`
+          : v.online
+            ? `${v.year} DRAFT · ONLINE. NOBODY LEFT THE HOUSE.`
+            : `${v.year} DRAFT · SITE LOST TO HISTORY`;
         const photos = VENUE_PHOTOS[v.year] ?? [];
         return (
           <>

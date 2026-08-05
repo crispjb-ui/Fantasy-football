@@ -23,6 +23,11 @@ Everything Brett has specified so far. Production waits until he gives the go
   Tomlinson (greatest fantasy season ever) 1st overall and Drew Brees — and
   he won the inaugural title without attending the draft.
 - Timothy Martin played 2007 only (finished 2nd); Brian Byrd took the seat in 2008.
+- **Draft venues** (`DRAFT_VENUES` in `src/data.ts`): **2011 Las Vegas was the
+  first live draft** — 2007–2010 were online, nobody travelled (the old
+  "Baltimore 2008" entry was the league misremembering and is gone). Live era
+  confirmed so far: 2011 Vegas, 2012 Baltimore (Sauté), 2013 Atlanta, 2014 DC,
+  2015 DC, 2017 Vegas, 2018→2026 all known. Only **2016** is still a hole.
 
 ## Look & feel
 

@@ -47,7 +47,10 @@ export const LOCATIONS: Record<string, { city: string; lat: number; lng: number 
 };
 
 /* Draft venues by August year — the reigning champion picks the room.
-   null city = site lost to history (early era / nobody remembers).
+   2011 (Vegas) was the FIRST live draft; 2007-2010 were online, nobody
+   travelled (`online: true`) — the earlier "Baltimore 2008" note was the
+   league misremembering, so it is not a venue.
+   null city + no online flag = live-era draft whose site is lost to history.
    uncertain = Brett's tracker had question marks. */
 export const DRAFT_VENUES: {
   year: number;
@@ -56,16 +59,18 @@ export const DRAFT_VENUES: {
   lat?: number;
   lng?: number;
   uncertain?: boolean;
+  online?: boolean;
+  first?: boolean;
 }[] = [
-  { year: 2007, city: null },
-  { year: 2008, city: "Baltimore, MD", lat: 39.2904, lng: -76.6122, uncertain: true }, // "probably not 100% official"
-  { year: 2009, city: null },
-  { year: 2010, city: null },
-  { year: 2011, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
+  { year: 2007, city: null, online: true },
+  { year: 2008, city: null, online: true },
+  { year: 2009, city: null, online: true },
+  { year: 2010, city: null, online: true },
+  { year: 2011, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398, first: true },
   { year: 2012, city: "Baltimore, MD", venue: "Sauté", lat: 39.2904, lng: -76.6122 },
-  { year: 2013, city: null },
+  { year: 2013, city: "Atlanta, GA", lat: 33.749, lng: -84.388 },
   { year: 2014, city: "Washington, DC", lat: 38.9072, lng: -77.0369 },
-  { year: 2015, city: "Washington, DC", lat: 38.9072, lng: -77.0369, uncertain: true },
+  { year: 2015, city: "Washington, DC", lat: 38.9072, lng: -77.0369 },
   { year: 2016, city: null },
   { year: 2017, city: "Las Vegas, NV", lat: 36.1699, lng: -115.1398 },
   { year: 2018, city: "Folly Beach, SC", lat: 32.655, lng: -79.9403 },
