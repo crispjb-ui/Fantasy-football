@@ -247,9 +247,20 @@ one for this laptop, one for managers' phones on the room's Wi-Fi.
   set `http://127.0.0.1:8300` and enable — every sale lands in your copilot
   within ~5 seconds.
 - **After the draft**: Setup → exports. The results CSV imports straight
-  into the copilot's history for next year, and the ESPN entry list (plus
-  `draftroom/scripts/espn_autoenter.py`, best-effort automation) kills the
-  end-of-night ESPN data-entry chore.
+  into the copilot's history for next year. For getting rosters into ESPN
+  (the league-manager "enter offline draft results" chore), in order of
+  preference:
+  1. **Claude in the loop** (most reliable): with the commissioner logged in
+     to ESPN in Chrome, open a Claude Code session and ask it to enter the
+     draft results — it reads every sale from `http://127.0.0.1:8300/api/sync`
+     and drives the real form via the Chrome extension, adapting to whatever
+     the page actually looks like and verifying each pick.
+  2. `draftroom/scripts/espn_autoenter.py` — scripted entry that scans the
+     live form, shows you the team mapping, verifies each pick, and resumes
+     if stopped. **Rehearse with `--recon` the moment LM credentials exist**
+     (it scans the form and enters nothing); if recon can't recognize the
+     form, fall back to path 1.
+  3. The ESPN entry list export — read it into the LM tool by hand.
 - Auto-backups every 10 picks in `draftroom/data/backups/`.
 
 Test: `python3 scripts/selftest_draftroom.py`
