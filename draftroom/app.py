@@ -485,6 +485,44 @@ def load_pool_from_sleeper(players, adp_entries=None):
     return n
 
 
+def _copilot_get(url, path):
+    req = urllib.request.Request(url.rstrip("/") + path,
+                                 headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+
+def api_copilot_sync(q, body):
+    """One click: mirror the copilot's team names (aliases), trade-adjusted
+    budgets, and keepers into the room. Budgets matter — the league trades
+    draft dollars, so hard-stop max bids are wrong at a flat $500."""
+    err = check_pin(body)
+    if err:
+        return err
+    url = body.get("copilot_url") or "http://127.0.0.1:8175"
+    state = _copilot_get(url, "/api/state")
+    aliases = state.get("team_aliases") or {}
+    default_budget = (state.get("config") or {}).get("budget") \
+        or (state.get("config") or {}).get("auction_budget") or DEFAULTS["budget"]
+    conn = connect()
+    room_ids = [t["id"] for t in conn.execute("SELECT id FROM teams ORDER BY id")]
+    teams_out = {}
+    for rid, ct in zip(room_ids, sorted(state.get("teams") or [], key=lambda t: t["id"])):
+        name = (aliases.get(str(ct["id"])) or "").strip() or ct["name"]
+        budget = int(ct.get("budget") or default_budget)
+        conn.execute("UPDATE teams SET name=?, budget=? WHERE id=?", (name, budget, rid))
+        teams_out[name] = budget
+    conn.commit()
+    audit(f"COPILOT SYNC teams/budgets ({len(teams_out)} teams)")
+    out = {"ok": True, "teams": teams_out}
+    try:
+        imported, skipped = _import_keepers(url)
+        out["keepers_imported"], out["keepers_skipped"] = imported, skipped
+    except Exception as e:  # noqa: BLE001 — keepers may simply not be logged yet
+        out["keepers_note"] = f"keepers not imported ({e})"
+    return out
+
+
 def api_keepers_import(q, body):
     """One click: pull keeper picks from the Auction Copilot (its
     /api/keepers/export) and log them here as keeper sales. Idempotent —
@@ -493,13 +531,16 @@ def api_keepers_import(q, body):
     err = check_pin(body)
     if err:
         return err
-    url = (body.get("copilot_url") or "http://127.0.0.1:8175").rstrip("/")
-    req = urllib.request.Request(url + "/api/keepers/export",
-                                 headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        keepers = json.loads(resp.read().decode()).get("keepers") or []
-    if not keepers:
+    imported, skipped = _import_keepers(body.get("copilot_url") or "http://127.0.0.1:8175")
+    if imported == 0 and not skipped:
         return {"error": "the copilot has no keeper picks logged yet"}
+    return {"ok": True, "imported": imported, "skipped": skipped[:10]}
+
+
+def _import_keepers(url):
+    keepers = _copilot_get(url, "/api/keepers/export").get("keepers") or []
+    if not keepers:
+        return 0, []
     conn = connect()
     tidx = {}
     for t in conn.execute("SELECT id, name FROM teams"):
@@ -537,7 +578,7 @@ def api_keepers_import(q, body):
         imported += 1
     conn.commit()
     audit(f"KEEPERS imported from copilot ({imported} added, {len(skipped)} skipped)")
-    return {"ok": True, "imported": imported, "skipped": skipped[:10]}
+    return imported, skipped
 
 
 def api_pool_add(q, body):
@@ -754,6 +795,7 @@ ROUTES = {
     ("POST", "/api/pool/import"): api_pool_import,
     ("POST", "/api/pool/add"): api_pool_add,
     ("POST", "/api/keepers/import"): api_keepers_import,
+    ("POST", "/api/copilot/sync"): api_copilot_sync,
     ("GET", "/api/sync"): api_sync,
     ("GET", "/api/export/csv"): api_export_csv,
     ("GET", "/api/export/espn"): api_export_espn,

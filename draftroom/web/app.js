@@ -443,12 +443,14 @@ function renderSetup() {
       <input type="text" id="addTeam" placeholder="NFL team" style="width:90px">
       <button class="btn" id="addBtn">➕ Add to pool</button>
     </div>
-    <h2 style="margin-top:12px">Keepers</h2>
+    <h2 style="margin-top:12px">Copilot sync</h2>
     <div class="row">
-      <button class="btn" id="keepImp">Import keepers from copilot</button>
+      <button class="btn" id="keepImp">Sync from copilot (teams + budgets + keepers)</button>
       <input type="text" id="keepUrl" value="http://127.0.0.1:8175" style="width:200px">
-      <span class="note">Pulls every keeper logged in the Auction Copilot and enters them here as
-        keeper sales (teams matched by name/alias). Safe to re-run — already-rostered players are skipped.</span>
+      <span class="note">Mirrors the copilot: team names (manager aliases), trade-adjusted draft
+        budgets (the league trades draft dollars — flat $500 makes the hard-stop max bids wrong),
+        and every logged keeper entered as a keeper sale. Safe to re-run — already-rostered
+        players are skipped.</span>
     </div>
     <h2 style="margin-top:12px">Exports</h2>
     <div class="row">
@@ -502,9 +504,13 @@ function renderSetup() {
   };
   $("#keepImp").onclick = async () => {
     try {
-      const r = await api("/api/keepers/import",
+      const r = await api("/api/copilot/sync",
         { pin: $("#pin").value, copilot_url: $("#keepUrl").value });
-      toast(`Keepers imported: ${r.imported}${r.skipped.length ? " ⚠ " + r.skipped.join("; ") : ""}`);
+      const budgets = Object.entries(r.teams).map(([n, b]) => `${n} $${b}`).join(", ");
+      let msg = `Synced ${Object.keys(r.teams).length} teams — ${budgets}`;
+      if (r.keepers_imported != null) msg += ` · keepers: ${r.keepers_imported}`;
+      if (r.keepers_note) msg += ` ⚠ ${r.keepers_note}`;
+      toast(msg);
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };

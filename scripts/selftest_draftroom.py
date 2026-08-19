@@ -179,12 +179,21 @@ KEEPERS = {"keepers": [
 ]}
 
 
+COPILOT_STATE = {
+    "config": {"auction_budget": 500},
+    "team_aliases": {"1": "Crisp", "2": "Nova"},
+    "teams": [{"id": i, "name": f"Copilot Team {i}",
+               "budget": {1: 560, 2: 600}.get(i)} for i in range(1, 11)],
+}
+
+
 class _FakeCopilot(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def do_GET(self):
-        payload = json.dumps(KEEPERS).encode()
+        payload = json.dumps(
+            COPILOT_STATE if self.path.startswith("/api/state") else KEEPERS).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -202,6 +211,23 @@ r, s = call("GET", "/api/sync")
 check("imported keepers flagged in sync",
       sum(1 for x in r["sales"] if x["keeper"]) >= 3,
       str([x["player"] for x in r["sales"] if x["keeper"]]))
+
+# --- full copilot sync (teams + trade-adjusted budgets + keepers) -----------------------
+r, s = call("POST", "/api/copilot/sync", {"pin": PIN, "copilot_url": "http://127.0.0.1:8792"})
+check("copilot sync ok", s == 200 and r["ok"] and r.get("keepers_imported") == 0, str(r)[:200])
+r, s = call("GET", "/api/board")
+t1 = next(t for t in r["teams"] if t["id"] == 1)
+t2 = next(t for t in r["teams"] if t["id"] == 2)
+t3 = next(t for t in r["teams"] if t["id"] == 3)
+check("teams renamed to copilot aliases (name fallback)",
+      t1["name"] == "Crisp" and t2["name"] == "Nova" and t3["name"] == "Copilot Team 3",
+      str((t1["name"], t2["name"], t3["name"])))
+check("trade-adjusted budgets applied (560/600, default 500)",
+      t1["budget"] == 560 and t2["budget"] == 600 and t3["budget"] == 500,
+      str((t1["budget"], t2["budget"], t3["budget"])))
+check("hard-stop max bid follows synced budget",
+      t1["max_bid"] == t1["budget"] - t1["spent"] - (t1["slots_left"] - 1),
+      str((t1["max_bid"], t1["budget"], t1["spent"], t1["slots_left"])))
 fake.shutdown()
 
 srv.shutdown()
