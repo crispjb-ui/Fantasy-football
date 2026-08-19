@@ -13,9 +13,23 @@ import argparse
 import os
 import socket
 import sys
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import app  # noqa: E402
+
+
+def _startup_pool_refresh():
+    """Best-effort background pull of the player pool + ESPN ADP so the room
+    opens with today's board. Failure is fine — an offline room still works
+    with whatever pool is already in the database (or a pasted CSV)."""
+    try:
+        r = app.pool_refresh()
+        print(f"[pool] {r['loaded']} players loaded, ADP source: {r['adp_source']}"
+              + (f" ({r['adp_note']})" if r.get("adp_note") else ""))
+    except Exception as e:  # noqa: BLE001
+        print(f"[pool] startup refresh skipped ({e}) — using existing pool; "
+              "you can paste an ESPN ADP CSV in Setup")
 
 
 def lan_ip():
@@ -35,6 +49,7 @@ def main():
     ap.add_argument("--host", default="0.0.0.0")
     args = ap.parse_args()
     srv = app.serve(args.host, args.port)
+    threading.Thread(target=_startup_pool_refresh, daemon=True).start()
     print("League Draft Room is up:")
     print(f"  This laptop:   http://127.0.0.1:{args.port}/")
     print(f"  Room Wi-Fi:    http://{lan_ip()}:{args.port}/   <- managers' phones")

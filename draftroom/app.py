@@ -363,6 +363,13 @@ def api_pool_refresh(q, body):
     err = check_pin(body)
     if err:
         return err
+    return pool_refresh()
+
+
+def pool_refresh():
+    """Reload the pool from Sleeper and stamp ESPN ADP. Also called by the
+    launcher in a background thread on startup, so it must not assume a
+    request context — and callers must treat failure as non-fatal."""
     req = urllib.request.Request(SLEEPER_PLAYERS, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         players = json.loads(resp.read().decode())
