@@ -14,6 +14,7 @@ import os
 import socket
 import sys
 import threading
+import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import app  # noqa: E402
@@ -47,6 +48,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8300)
     ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--no-open", action="store_true")
     args = ap.parse_args()
     srv = app.serve(args.host, args.port)
     threading.Thread(target=_startup_pool_refresh, daemon=True).start()
@@ -55,6 +57,8 @@ def main():
     print(f"  Room Wi-Fi:    http://{lan_ip()}:{args.port}/   <- managers' phones")
     print(f"  Scorekeeper PIN: {app.setting('pin')}  (change it in Setup)")
     print("Ctrl+C to stop.")
+    if not args.no_open:
+        threading.Timer(0.5, webbrowser.open, args=(f"http://127.0.0.1:{args.port}/",)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
