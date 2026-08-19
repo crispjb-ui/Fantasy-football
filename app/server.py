@@ -190,6 +190,7 @@ def auto_refresh_once():
         ("sleeper", lambda: data_sources.fetch_sleeper(cfg["season"])),
         ("trending", data_sources.fetch_trending),
         ("fantasypros", data_sources.fetch_fantasypros_aav),
+        ("espn_market", lambda: data_sources.fetch_espn_market(cfg["season"])),
         ("schedule", lambda: data_sources.fetch_schedule(cfg["season"])),
         ("state", data_sources.fetch_nfl_state),
     ):
@@ -230,7 +231,8 @@ def api_sample(q, body):
 
 def api_refresh(q, body):
     cfg = db.get_config()
-    sources = body.get("sources") or ["sleeper", "trending", "fantasypros", "schedule", "state"]
+    sources = body.get("sources") or ["sleeper", "trending", "fantasypros",
+                                      "espn_market", "schedule", "state"]
     pre = _snapshot()
     results, ok_any = {}, False
     if "sleeper" in sources:
@@ -250,11 +252,18 @@ def api_refresh(q, body):
             results["trending"] = {"ok": False, "error": str(e)}
     if "fantasypros" in sources:
         try:
-            n = data_sources.fetch_fantasypros_aav()
-            results["fantasypros"] = {"ok": True, "matched": n}
+            n, nproj = data_sources.fetch_fantasypros_aav()
+            results["fantasypros"] = {"ok": True, "matched": n, "projections": nproj}
             ok_any = True
         except Exception as e:  # noqa: BLE001
             results["fantasypros"] = {"ok": False, "error": str(e)}
+    if "espn_market" in sources:
+        try:
+            nproj, nadp = data_sources.fetch_espn_market(cfg["season"])
+            results["espn_market"] = {"ok": True, "projections": nproj, "adp": nadp}
+            ok_any = True
+        except Exception as e:  # noqa: BLE001
+            results["espn_market"] = {"ok": False, "error": str(e)}
     if "schedule" in sources:
         try:
             n = data_sources.fetch_schedule(cfg["season"])

@@ -698,9 +698,39 @@ dw_html = (
     "</tbody></table>")
 p3 = _ds2._fp_extract_players(dw_html)
 check("fp draftwizard table parsed + deduped", len(p3) == 3 and
-      p3[0] == {"player_name": "Josh Allen", "player_position_id": "QB", "player_aav": 93}, str(p3))
+      p3[0] == {"player_name": "Josh Allen", "player_position_id": "QB",
+                "player_aav": 93, "player_pts": 372}, str(p3))
 check("fp draftwizard strips injury tag + comma team",
       any(p["player_name"] == "Patrick Mahomes II" and p["player_aav"] == 7 for p in p3), str(p3))
+check("fp draftwizard captures pts either attr order",
+      any(p["player_name"] == "Scrub Back" and p.get("player_pts") == 26 for p in p3), str(p3))
+
+# --- ESPN market (projections + ADP) fixture ---------------------------------------------
+_db.upsert_players([{"id": "tst:em1", "name": "Testy Espnmarket", "position": "RB",
+                     "team": "TST", "points": 120.0, "stats": {}, "espn_id": "424242"},
+                    {"id": "tst:em2", "name": "Chicago Bears", "position": "DST",
+                     "team": "CHI", "points": 80.0, "stats": {}}], source="test")
+_db.set_proj_source("test", {"tst:em1": 120.0, "tst:em2": 80.0})
+espn_payload = {"players": [
+    {"player": {"id": 424242, "fullName": "T. Espnmarket Renamed", "defaultPositionId": 2,
+                "ownership": {"averageDraftPosition": 31.5},
+                "stats": [{"id": "102025", "appliedTotal": 199.0},   # last season - ignore
+                          {"id": "102026", "appliedTotal": 140.0}]}},
+    {"player": {"id": 777, "fullName": "Bears D/ST", "defaultPositionId": 16,
+                "ownership": {"averageDraftPosition": 133.0},
+                "stats": [{"id": "102026", "appliedTotal": 95.0}]}},
+    {"player": {"id": 888, "fullName": "Nobody Weknow", "defaultPositionId": 3,
+                "ownership": {"averageDraftPosition": 50.0},
+                "stats": [{"id": "102026", "appliedTotal": 150.0}]}},
+]}
+nproj, nadp = _ds2.apply_espn_market(espn_payload, 2026)
+check("espn market: matched by espn_id + DST nickname, unknown skipped",
+      nproj == 2 and nadp == 2, f"proj={nproj} adp={nadp}")
+_p = _db.get_player("tst:em1")
+check("espn market: espn_adp stamped", _p["espn_adp"] == 31.5, str(_p["espn_adp"]))
+check("espn market: consensus moved toward espn projection",
+      120.0 < _p["points"] < 140.0 and _p["proj_sigma"] > 0,
+      f"points={_p['points']} sigma={_p['proj_sigma']}")
 
 # --- bundled 2021-2025 auction results ----------------------------------------------------
 for i, alias in enumerate(["Crisp", "Lesesne", "Byrd", "Link", "Ned", "Omar", "Nova", "Singer", "Farmer", "Rob"]):

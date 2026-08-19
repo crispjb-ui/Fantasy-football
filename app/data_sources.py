@@ -35,6 +35,16 @@ FANTASYPROS_AUCTION = (
 
 RELEVANT_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
 
+# ESPN's public player view: season projections (already scored with ESPN
+# standard settings via leaguedefaults/1 — exactly this league's scoring)
+# plus live ADP. The room drafts on ESPN, so its ADP is how rivals see the
+# board. X-Fantasy-Filter is required or the endpoint returns 50 players.
+ESPN_MARKET = ("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}"
+               "/segments/0/leaguedefaults/1?view=kona_player_info")
+ESPN_MARKET_FILTER = json.dumps(
+    {"players": {"limit": 500, "sortAdp": {"sortPriority": 1, "sortAsc": True}}})
+ESPN_POS_MAP = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DST"}
+
 
 def _get(url):
     req = urllib.request.Request(url, headers=UA)
@@ -110,6 +120,65 @@ def fetch_sleeper(season):
     db.meta_set("last_refresh", {"source": "sleeper", "season": season, "players": len(rows),
                                  "ts": time.time()})
     return len(rows), warnings
+
+
+def fetch_espn_market(season):
+    """Pull ESPN season projections + live ADP for the draft season."""
+    req = urllib.request.Request(
+        ESPN_MARKET.format(season=season),
+        headers={**UA, "X-Fantasy-Filter": ESPN_MARKET_FILTER})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return apply_espn_market(payload, season)
+
+
+def apply_espn_market(payload, season):
+    """ESPN entries -> proj_sources voice 'espn' + players.espn_adp.
+
+    Matching: espn_id first (Sleeper carries the mapping), then name+position,
+    then D/ST nickname ('Texans D/ST' vs the Sleeper name 'Houston Texans').
+    Returns (projections_matched, adp_matched).
+    """
+    by_espn, by_name, dst_by_nick = {}, {}, {}
+    for p in db.all_players():
+        if p.get("espn_id"):
+            by_espn[str(p["espn_id"])] = p["id"]
+        by_name[(norm_name(p["name"]), p["position"])] = p["id"]
+        if p["position"] == "DST":
+            toks = norm_name(p["name"]).split()
+            if toks:
+                dst_by_nick[toks[-1]] = p["id"]
+    proj_key = f"10{season}"          # statSourceId 1 (projection), full season
+    proj, adp_updates = {}, []
+    for e in payload.get("players") or []:
+        pl = e.get("player") or {}
+        pos = ESPN_POS_MAP.get(pl.get("defaultPositionId"))
+        name = pl.get("fullName")
+        if not pos or not name:
+            continue
+        pid = by_espn.get(str(pl.get("id")))
+        if pid is None and pos == "DST":
+            toks = norm_name(name.replace("D/ST", "")).split()
+            pid = dst_by_nick.get(toks[-1]) if toks else None
+        if pid is None:
+            pid = by_name.get((norm_name(name), pos))
+        if pid is None:
+            continue
+        pts = next((s.get("appliedTotal") for s in pl.get("stats") or []
+                    if s.get("id") == proj_key), None)
+        if pts and pts > 0:
+            proj[pid] = round(pts, 1)
+        adp = (pl.get("ownership") or {}).get("averageDraftPosition")
+        if adp:
+            adp_updates.append((round(adp, 1), pid))
+    conn = db.connect()
+    conn.execute("UPDATE players SET espn_adp=NULL")
+    conn.executemany("UPDATE players SET espn_adp=? WHERE id=?", adp_updates)
+    conn.commit()
+    if proj:
+        db.set_proj_source("espn", proj)
+        db.rebuild_consensus()
+    return len(proj), len(adp_updates)
 
 
 def fetch_trending():
@@ -359,6 +428,7 @@ def _fp_extract_players(html):
     ):
         attrs, pos, body = m.groups()
         vm = re.search(r"\bv='(-?\d+)'", attrs)
+        pm = re.search(r"\bpts='(-?\d+)'", attrs)   # FP consensus projection (STD)
         tds = re.findall(r"<td[^>]*>(.*?)</td>", body, re.S)
         if not vm or len(tds) < 2:
             continue
@@ -369,8 +439,11 @@ def _fp_extract_players(html):
         key = (name, pos)
         if name and key not in seen:                   # rows repeat across tabs
             seen.add(key)
-            found.append({"player_name": name, "player_position_id": pos,
-                          "player_aav": int(vm.group(1))})
+            row = {"player_name": name, "player_position_id": pos,
+                   "player_aav": int(vm.group(1))}
+            if pm:
+                row["player_pts"] = int(pm.group(1))
+            found.append(row)
     if found:
         return found
     m = re.search(r"var\s+ecrData\s*=\s*(\{.*?\});", html, re.S)
@@ -423,22 +496,29 @@ def fetch_fantasypros_aav():
         if len(parts) == 2:  # FP abbreviates some first names ("J. Croskey-Merritt")
             k = (parts[0][:1] + " " + parts[1], p["position"])
             initials[k] = None if k in initials else p["id"]  # ambiguous -> drop
-    matched = 0
+    matched, proj = 0, {}
     for p in players:
         pos = _norm_pos(re.sub(r"\d+$", "", p.get("player_position_id", "") or ""))
-        aav = p.get("player_aav") or p.get("aav")
-        try:
-            aav = float(str(aav).lstrip("$"))
-        except (TypeError, ValueError):
-            continue
         nm = norm_name(p.get("player_name", ""))
         pid = index.get((nm, pos)) or initials.get((nm, pos))
-        if pid and aav > 0:
+        if not pid:
+            continue
+        pts = p.get("player_pts")
+        if pts and pts > 0:
+            proj[pid] = float(pts)
+        try:
+            aav = float(str(p.get("player_aav") or p.get("aav")).lstrip("$"))
+        except (TypeError, ValueError):
+            continue
+        if aav > 0:
             db.set_market_aav(pid, aav)
             matched += 1
     if matched == 0:
         raise RuntimeError("FantasyPros data fetched but no players matched")
-    return matched
+    if proj:
+        db.set_proj_source("fantasypros", proj)
+        db.rebuild_consensus()
+    return matched, len(proj)
 
 
 # --- League Draft Room live sync ------------------------------------------------

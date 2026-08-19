@@ -123,7 +123,7 @@ def connect() -> sqlite3.Connection:
         conn.executescript(SCHEMA)
         # Migrate databases created before these columns existed.
         for col in ("age INTEGER", "years_exp INTEGER", "espn_id TEXT",
-                    "depth INTEGER", "proj_sigma REAL"):
+                    "depth INTEGER", "proj_sigma REAL", "espn_adp REAL"):
             try:
                 conn.execute(f"ALTER TABLE players ADD COLUMN {col}")
             except sqlite3.OperationalError:
