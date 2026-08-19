@@ -189,6 +189,7 @@ def auto_refresh_once():
     for name, fn in (
         ("sleeper", lambda: data_sources.fetch_sleeper(cfg["season"])),
         ("trending", data_sources.fetch_trending),
+        ("fantasypros", data_sources.fetch_fantasypros_aav),
         ("schedule", lambda: data_sources.fetch_schedule(cfg["season"])),
         ("state", data_sources.fetch_nfl_state),
     ):
