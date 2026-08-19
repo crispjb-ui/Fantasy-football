@@ -162,6 +162,48 @@ for i in range(4, 12):
 bdir = os.path.join(os.path.dirname(os.environ["DRAFTROOM_DB"]), "backups")
 check("auto-backup written", os.path.isdir(bdir) and len(os.listdir(bdir)) >= 1, bdir)
 
+# --- keeper import from the copilot ----------------------------------------------------
+from http.server import BaseHTTPRequestHandler, HTTPServer  # noqa: E402
+
+KEEPERS = {"keepers": [
+    # alias won't match a room team; the copilot team NAME does
+    {"player": "Kept Star", "position": "RB", "price": 70,
+     "team": "Drug Runner. Corp.", "alias": "Crisp"},
+    {"player": "Player 20", "position": "WR", "price": 25,
+     "team": "poop shoot", "alias": "Nova"},
+    # already sold in the room -> must be skipped, not duplicated
+    {"player": "Player 1", "position": "RB", "price": 30,
+     "team": "poop shoot", "alias": "Nova"},
+    {"player": "Unmappable Guy", "position": "WR", "price": 9,
+     "team": "Zzz Nobody", "alias": "Zzz"},
+]}
+
+
+class _FakeCopilot(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        payload = json.dumps(KEEPERS).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+fake = HTTPServer(("127.0.0.1", 8792), _FakeCopilot)
+threading.Thread(target=fake.serve_forever, daemon=True).start()
+r, s = call("POST", "/api/keepers/import", {"pin": PIN, "copilot_url": "http://127.0.0.1:8792"})
+check("keeper import: new keepers entered", s == 200 and r["imported"] == 2, str(r))
+check("keeper import: drafted + unmappable skipped", len(r["skipped"]) == 2, str(r["skipped"]))
+r2, s = call("POST", "/api/keepers/import", {"pin": PIN, "copilot_url": "http://127.0.0.1:8792"})
+check("keeper import idempotent on re-run", s == 200 and r2["imported"] == 0, str(r2))
+r, s = call("GET", "/api/sync")
+check("imported keepers flagged in sync",
+      sum(1 for x in r["sales"] if x["keeper"]) >= 3,
+      str([x["player"] for x in r["sales"] if x["keeper"]]))
+fake.shutdown()
+
 srv.shutdown()
 print()
 if failures:

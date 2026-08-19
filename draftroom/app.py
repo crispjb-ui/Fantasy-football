@@ -485,6 +485,61 @@ def load_pool_from_sleeper(players, adp_entries=None):
     return n
 
 
+def api_keepers_import(q, body):
+    """One click: pull keeper picks from the Auction Copilot (its
+    /api/keepers/export) and log them here as keeper sales. Idempotent —
+    players already on a roster are skipped, so re-running after keeper
+    changes in the copilot only adds the new ones."""
+    err = check_pin(body)
+    if err:
+        return err
+    url = (body.get("copilot_url") or "http://127.0.0.1:8175").rstrip("/")
+    req = urllib.request.Request(url + "/api/keepers/export",
+                                 headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        keepers = json.loads(resp.read().decode()).get("keepers") or []
+    if not keepers:
+        return {"error": "the copilot has no keeper picks logged yet"}
+    conn = connect()
+    tidx = {}
+    for t in conn.execute("SELECT id, name FROM teams"):
+        tidx[norm_name(t["name"])] = t["id"]
+    drafted = {r["pool_id"] for r in conn.execute("SELECT pool_id FROM picks")}
+    imported, skipped = 0, []
+    for k in keepers:
+        team_id = None
+        for label in (k.get("alias"), k.get("team")):
+            n = norm_name(label or "")
+            if not n:
+                continue
+            team_id = tidx.get(n) or next(
+                (tid for nm, tid in tidx.items() if n in nm or nm in n), None)
+            if team_id:
+                break
+        if team_id is None:
+            skipped.append(f"no team match for '{k.get('alias') or k.get('team')}'")
+            continue
+        name = (k.get("player") or "").strip()
+        if not name:
+            continue
+        pos = (k.get("position") or "").strip().upper() or None
+        conn.execute("INSERT OR IGNORE INTO pool (name, norm, position) VALUES (?,?,?)",
+                     (name, norm_name(name), pos))
+        row = conn.execute("SELECT id FROM pool WHERE norm=?",
+                           (norm_name(name),)).fetchone()
+        if row["id"] in drafted:
+            skipped.append(f"{name} already on a roster")
+            continue
+        conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) "
+                     "VALUES (?,?,?,1,?)",
+                     (row["id"], team_id, int(k.get("price") or 0), time.time()))
+        drafted.add(row["id"])
+        imported += 1
+    conn.commit()
+    audit(f"KEEPERS imported from copilot ({imported} added, {len(skipped)} skipped)")
+    return {"ok": True, "imported": imported, "skipped": skipped[:10]}
+
+
 def api_pool_add(q, body):
     """Manually add one player (deep sleepers the feeds don't know)."""
     err = check_pin(body)
@@ -698,6 +753,7 @@ ROUTES = {
     ("POST", "/api/pool/refresh"): api_pool_refresh,
     ("POST", "/api/pool/import"): api_pool_import,
     ("POST", "/api/pool/add"): api_pool_add,
+    ("POST", "/api/keepers/import"): api_keepers_import,
     ("GET", "/api/sync"): api_sync,
     ("GET", "/api/export/csv"): api_export_csv,
     ("GET", "/api/export/espn"): api_export_espn,

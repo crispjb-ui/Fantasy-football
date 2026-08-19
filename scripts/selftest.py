@@ -770,6 +770,11 @@ check("all-time ranking has 10 managers, Farmer first", len(r["all_time"]) == 10
       r["all_time"][0]["key"] == "Farmer" and len(r["all_time"][0]["titles"]) == 6, str(r["all_time"][0]))
 check("history formula states independence", "independent" in r["formula"].lower(), r["formula"][:80])
 
+# --- keeper export (draft room import feed) ------------------------------------------
+r, s = call("GET", "/api/keepers/export")
+check("keeper export serves keepers with alias + price", s == 200 and len(r["keepers"]) >= 1 and
+      all("alias" in k and "price" in k and "player" in k for k in r["keepers"]), str(r)[:150])
+
 srv.shutdown()
 print()
 if failures:

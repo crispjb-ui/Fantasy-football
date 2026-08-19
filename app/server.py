@@ -1034,6 +1034,27 @@ def api_budgets_2026(q, body):
     return {"ok": True, "budgets": applied}
 
 
+def api_keepers_export(q, body):
+    """Keeper picks for the Draft Room's one-click import: player, position,
+    price, and the team's name + alias so the room can map franchises."""
+    aliases = db.meta_get("team_aliases", {}) or {}
+    teams = {t["id"]: t for t in db.teams()}
+    out = []
+    for pk in db.picks():
+        if not pk["is_keeper"]:
+            continue
+        p = db.get_player(pk["player_id"])
+        t = teams.get(pk["team_id"])
+        out.append({
+            "player": p["name"] if p else pk["player_id"],
+            "position": p["position"] if p else None,
+            "price": pk["price"],
+            "team": t["name"] if t else None,
+            "alias": (aliases.get(str(pk["team_id"])) or "").strip() or None,
+        })
+    return {"keepers": out}
+
+
 def api_league_history(q, body):
     """Complete 2006-2025 league history bundled with the app (league_history.py):
     per-season final standings, champions (plaque-verified), and the all-time
@@ -1098,6 +1119,7 @@ ROUTES = {
     ("GET", "/api/export"): api_export,
     ("GET", "/api/waivers"): api_waivers,
     ("GET", "/api/league_history"): api_league_history,
+    ("GET", "/api/keepers/export"): api_keepers_export,
     ("POST", "/api/transaction"): api_transaction,
     ("POST", "/api/transaction/delete"): api_transaction_delete,
 }
