@@ -42,6 +42,14 @@ SLEEPER_PLAYERS = "https://api.sleeper.app/v1/players/nfl"
 SLEEPER_ADP = ("https://api.sleeper.com/projections/nfl/{season}?season_type=regular"
                "&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K"
                "&position[]=DEF&order_by=adp_std")
+# The league drafts on ESPN, so ESPN ADP is authoritative for the board;
+# Sleeper ADP is only the fallback when ESPN is unreachable. Public no-auth
+# view; the X-Fantasy-Filter header is required or it returns 50 players.
+ESPN_ADP = ("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}"
+            "/segments/0/leaguedefaults/1?view=kona_player_info")
+ESPN_ADP_FILTER = json.dumps(
+    {"players": {"limit": 600, "sortAdp": {"sortPriority": 1, "sortAsc": True}}})
+ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DST"}
 
 _local = threading.local()
 
@@ -365,9 +373,70 @@ def api_pool_refresh(q, body):
         with urllib.request.urlopen(req2, timeout=60) as resp:
             adp_entries = json.loads(resp.read().decode())
     except Exception as e:  # noqa: BLE001 — ADP is a bonus, not a blocker
-        adp_note = f"ADP fetch failed ({e}) — paste an ESPN ADP CSV instead"
+        adp_note = f"Sleeper ADP fetch failed ({e})"
     n = load_pool_from_sleeper(players, adp_entries)
-    return {"ok": True, "loaded": n, "by_pos": _pool_counts(), "adp_note": adp_note}
+    adp_source = "sleeper"
+    try:
+        espn = fetch_espn_adp()
+        # only supersede Sleeper ADP with a healthy ESPN sample — a partial
+        # feed after the wipe would leave the board worse than the fallback
+        if len(espn) >= 100:
+            matched = apply_espn_adp(espn)
+            adp_source = "espn"
+            adp_note = f"ESPN ADP applied ({matched} players ranked)"
+        else:
+            adp_note = (f"ESPN ADP returned only {len(espn)} players — "
+                        f"kept Sleeper ADP")
+    except Exception as e:  # noqa: BLE001
+        adp_note = ((adp_note + " | ") if adp_note else "") + \
+            f"ESPN ADP failed ({e}) — using Sleeper ADP; or paste an ESPN ADP CSV"
+    return {"ok": True, "loaded": n, "by_pos": _pool_counts(),
+            "adp_note": adp_note, "adp_source": adp_source}
+
+
+def fetch_espn_adp():
+    """Live ESPN ADP for the draft season: [(fullName, pos, adp), ...]."""
+    req = urllib.request.Request(
+        ESPN_ADP.format(season=setting("season")),
+        headers={"User-Agent": "Mozilla/5.0", "X-Fantasy-Filter": ESPN_ADP_FILTER})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode())
+    out = []
+    for e in data.get("players") or []:
+        p = e.get("player") or {}
+        pos = ESPN_POS.get(p.get("defaultPositionId"))
+        adp = (p.get("ownership") or {}).get("averageDraftPosition")
+        if pos and p.get("fullName") and adp:
+            out.append((p["fullName"], pos, adp))
+    return out
+
+
+def apply_espn_adp(entries):
+    """Replace all pool ADP with ESPN's (the platform the room drafts on).
+    DSTs match by nickname — ESPN says 'Texans D/ST', the pool has the
+    Sleeper name 'Houston Texans'. Returns players matched."""
+    conn = connect()
+    dst_by_nick = {}
+    for r in conn.execute("SELECT id, norm FROM pool WHERE position='DST'"):
+        toks = r["norm"].split()
+        if toks:
+            dst_by_nick[toks[-1]] = r["id"]
+    conn.execute("UPDATE pool SET adp=NULL")
+    matched = 0
+    for name, pos, adp in entries:
+        if pos == "DST":
+            toks = norm_name(name.replace("D/ST", "")).split()
+            pool_id = dst_by_nick.get(toks[-1]) if toks else None
+            if pool_id:
+                conn.execute("UPDATE pool SET adp=? WHERE id=?", (adp, pool_id))
+                matched += 1
+        else:
+            cur = conn.execute(
+                "UPDATE pool SET adp=? WHERE norm=? AND (position=? OR position IS NULL)",
+                (adp, norm_name(name), pos))
+            matched += 1 if cur.rowcount else 0
+    conn.commit()
+    return matched
 
 
 def load_pool_from_sleeper(players, adp_entries=None):

@@ -265,7 +265,7 @@ function renderTeam(tid) {
 function bestAvailableGrid(compact) {
   const b = S.board;
   if (!b.has_adp) {
-    return `<div class="note">Load ADP in Setup (Sleeper button or paste ESPN ADP CSV) to show best available by position.</div>`;
+    return `<div class="note">Load the pool in Setup (pulls ESPN ADP live) to show best available by position.</div>`;
   }
   const positions = compact ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K", "DST"];
   return `<div class="bagrid" ${compact ? "" : `style="grid-template-columns:repeat(${positions.length},minmax(0,1fr))"`}>` + positions.map(pos => {
@@ -428,9 +428,11 @@ function renderSetup() {
     </div>
     <h2 style="margin-top:12px">Player pool (${S.board.pool_size} loaded${S.board.has_adp ? ", ADP ✓" : ", no ADP yet"})</h2>
     <div class="row">
-      <button class="btn" id="poolBtn">Load NFL players + ADP (Sleeper, needs internet)</button>
-      <span class="note">or paste CSV/TSV — columns like <b>Player, Pos, Team, ADP</b> (an ESPN ADP
-        export pasted straight from a spreadsheet works; ADP powers the best-available board):</span>
+      <button class="btn" id="poolBtn">Load NFL players + ESPN ADP (needs internet)</button>
+      <span class="note">Pool names come from Sleeper; ADP comes live from ESPN (the platform the room
+        drafts on), falling back to Sleeper ADP if ESPN is down. Or paste CSV/TSV — columns like
+        <b>Player, Pos, Team, ADP</b> (an ESPN ADP export pasted straight from a spreadsheet works;
+        ADP powers the best-available board):</span>
     </div>
     <textarea id="poolCsv" style="width:100%;min-height:80px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
     <div class="row"><button class="btn" id="poolImp">Import CSV</button></div>
@@ -486,7 +488,8 @@ function renderSetup() {
     toast("Loading player pool…");
     try {
       const r = await api("/api/pool/refresh", { pin: $("#pin").value });
-      toast(`Pool loaded — ${census(r)}${r.adp_note ? " ⚠ " + r.adp_note : ""}`);
+      const adpMark = r.adp_source === "espn" ? " ✓ " : " ⚠ ";
+      toast(`Pool loaded — ${census(r)}${r.adp_note ? adpMark + r.adp_note : ""}`);
       await refresh(); render();
     } catch (e) { toast(e.message, true); }
   };
