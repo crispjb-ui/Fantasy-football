@@ -731,6 +731,12 @@ check("espn market: espn_adp stamped", _p["espn_adp"] == 31.5, str(_p["espn_adp"
 check("espn market: consensus moved toward espn projection",
       120.0 < _p["points"] < 140.0 and _p["proj_sigma"] > 0,
       f"points={_p['points']} sigma={_p['proj_sigma']}")
+_pool_rl, _ = _srv._valued_pool()
+_t = next(p for p in _pool_rl if p["id"] == "tst:em1")
+check("room_lean derived from espn positional rank",
+      _t.get("espn_pos_rank") == 1 and _t.get("pos_rank") and
+      _t.get("room_lean") == _t["pos_rank"] - _t["espn_pos_rank"], str(
+          {k: _t.get(k) for k in ("pos_rank", "espn_pos_rank", "room_lean")}))
 
 # --- bundled 2021-2025 auction results ----------------------------------------------------
 for i, alias in enumerate(["Crisp", "Lesesne", "Byrd", "Link", "Ned", "Omar", "Nova", "Singer", "Farmer", "Rob"]):

@@ -125,6 +125,24 @@ def compute_values(players, cfg):
     pool.sort(key=lambda x: (x["value"], x["points"]), reverse=True)
     for i, p in enumerate(pool):
         p["overall_rank"] = i + 1
+
+    # Room perception: the league drafts on ESPN, so ESPN ADP is how rivals
+    # rank the board. Compared within position (cross-position ADP is biased
+    # by snake-draft QB/TE timing). room_lean = our positional rank minus
+    # ESPN's: positive -> the room rates him higher than we do (overpay risk,
+    # fade or nominate early); negative -> the room is asleep on him (target).
+    for pos, group in by_pos.items():
+        ours = sorted((p for p in group if p["value"] > 0),
+                      key=lambda x: x["value"], reverse=True)
+        for i, p in enumerate(ours):
+            p["pos_rank"] = i + 1
+        espn = sorted((p for p in group if p.get("espn_adp")),
+                      key=lambda x: x["espn_adp"])
+        for i, p in enumerate(espn):
+            p["espn_pos_rank"] = i + 1
+    for p in pool:
+        if p.get("pos_rank") and p.get("espn_pos_rank"):
+            p["room_lean"] = p["pos_rank"] - p["espn_pos_rank"]
     return pool
 
 

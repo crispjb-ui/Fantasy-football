@@ -104,6 +104,15 @@ def bid_advice(player, state, my_id, cfg):
         reasons.append(f"market is inflated ({state['inflation']:.2f}x) — expect prices above sticker")
     elif state["inflation"] < 0.95:
         reasons.append(f"market is deflated ({state['inflation']:.2f}x) — bargains available")
+    lean = player.get("room_lean")
+    if lean is not None and lean >= 4:
+        reasons.append(f"room-perception gap: ESPN shows him {pos}{player['espn_pos_rank']}, "
+                       f"our value says {pos}{player['pos_rank']} — this room drafts off ESPN, "
+                       "expect an overpay; let a rival have him")
+    elif lean is not None and lean <= -4:
+        reasons.append(f"room is asleep on him: ESPN shows {pos}{player['espn_pos_rank']}, "
+                       f"our value says {pos}{player['pos_rank']} — rivals won't chase, "
+                       "he can be yours under sticker")
 
     suggested = max(suggested_max, 1 if me["slots_left"] > 0 else 0)
     alternatives = sorted(
@@ -208,6 +217,10 @@ def targets_now(state, my_id, cfg, limit=8):
             reasons.append(f"only {tier_left} left in {p['position']} tier {p.get('tier')} — act soon")
         elif mult > 1.0:
             reasons.append("fills a scarce starter need")
+        lean = p.get("room_lean")
+        if lean is not None and lean <= -4:
+            reasons.append(f"ESPN (what the room reads) has him {p['position']}{p['espn_pos_rank']} "
+                           f"vs our {p['position']}{p['pos_rank']} — rivals won't bid him up")
         if not reasons:
             reasons.append("clean fit for an open starter slot")
         out.append({"player": p, "score": round(score, 1), "why": "; ".join(reasons)})
@@ -351,12 +364,13 @@ def nomination_suggestions(state, my_id, cfg, limit=6):
         mult = _need_multiplier(p, me, state, cfg)
         if mult < 0.9 and p["adj_value"] >= 15:
             demand = rival_demand(p, my_id=my_id, state=state, cfg=cfg)
-            burn.append({
-                "player": p,
-                "demand": demand,
-                "why": (f"You don't need {p['position']} and {demand} rival(s) do — "
-                        f"nominate to start a ~${int(p.get('expected_live') or p['adj_value'])} bidding war."),
-            })
+            lean = p.get("room_lean") or 0
+            why = (f"You don't need {p['position']} and {demand} rival(s) do — "
+                   f"nominate to start a ~${int(p.get('expected_live') or p['adj_value'])} bidding war.")
+            if lean >= 4:
+                why += (f" Bonus: ESPN ranks him {p['position']}{p['espn_pos_rank']} vs our "
+                        f"{p['position']}{p['pos_rank']} — the room will chase past fair value.")
+            burn.append({"player": p, "demand": demand, "lean": lean, "why": why})
         elif mult >= 1.0 and p["adj_value"] <= me["max_bid"]:
             targets.append({
                 "player": p,
@@ -367,7 +381,8 @@ def nomination_suggestions(state, my_id, cfg, limit=6):
     if max_other_bid < 10 or others_money < state["remaining_slots"] * 2:
         picks = targets[:limit]
         return {"mode": "strike", "note": "Rivals are nearly broke — nominate YOUR targets now.", "suggestions": picks}
-    burn.sort(key=lambda b: (-b["demand"], -b["player"]["adj_value"]))
+    burn.sort(key=lambda b: (-b["demand"], -max(0, b.get("lean") or 0),
+                             -b["player"]["adj_value"]))
     n_burn = (limit + 1) // 2
     return {
         "mode": "mixed",
