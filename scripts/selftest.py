@@ -682,6 +682,25 @@ p2 = _ds2._fp_extract_players(nextjs_html)
 check("fp legacy ecrData parsed", len(p1) == 1 and p1[0]["player_name"] == "A", str(p1))
 check("fp __NEXT_DATA__ parsed", len(p2) == 1 and p2[0]["player_name"] == "B" and
       p2[0]["player_position_id"] == "WR", str(p2))
+dw_html = (
+    "<table class='ValueTable'><tbody>"
+    "<tr pid='1' v='93' pts='372' class=' PlayerQB''><td class='RankCell'></td>"
+    "<td>Josh Allen (BUF - QB)</td><td class='AlignRight DollarValue'>$93</td></tr>"
+    "<tr pid='2' v='7' pts='304' class=' PlayerQB''><td class='RankCell'></td>"
+    "<td>Patrick Mahomes II, KC<span class='injury-tag' title=\"Knee\">DTD</span></td>"
+    "<td class='AlignRight DollarValue'>$7</td></tr>"
+    # rows repeat across the position tab and overall tab -> dedup
+    "<tr pid='1' v='93' pts='372' class=' PlayerQB''><td class='RankCell'></td>"
+    "<td>Josh Allen (BUF - QB)</td><td class='AlignRight DollarValue'>$93</td></tr>"
+    # negative-value rows put pts before v
+    "<tr pid='9' pts='26' v='-6' class=' PlayerRB''><td class='RankCell'></td>"
+    "<td>Scrub Back (NO - RB)</td><td class='AlignRight DollarValue'>$0</td></tr>"
+    "</tbody></table>")
+p3 = _ds2._fp_extract_players(dw_html)
+check("fp draftwizard table parsed + deduped", len(p3) == 3 and
+      p3[0] == {"player_name": "Josh Allen", "player_position_id": "QB", "player_aav": 93}, str(p3))
+check("fp draftwizard strips injury tag + comma team",
+      any(p["player_name"] == "Patrick Mahomes II" and p["player_aav"] == 7 for p in p3), str(p3))
 
 # --- bundled 2021-2025 auction results ----------------------------------------------------
 for i, alias in enumerate(["Crisp", "Lesesne", "Byrd", "Link", "Ned", "Omar", "Nova", "Singer", "Farmer", "Rob"]):

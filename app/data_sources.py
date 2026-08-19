@@ -26,8 +26,11 @@ SLEEPER_PROJECTIONS = (
 )
 SLEEPER_TRENDING = "https://api.sleeper.app/v1/players/nfl/trending/{kind}?lookback_hours=48&limit=200"
 FANTASYPROS_AUCTION = (
-    "https://www.fantasypros.com/nfl/auction-values/calculator.php"
-    "?teams=10&budget=500&pos=std"
+    # calculator.php is now a bare iframe wrapper; the Draft Wizard JSP behind
+    # it serves the value tables server-rendered and honors these GET params
+    # (verified Aug 2026: selects come back with STD/10/500 selected).
+    "https://draftwizard.fantasypros.com/auction/fp_nfl.jsp"
+    "?scoring=STD&teams=10&tb=500&QB=1&RB=2&WR=2&TE=1&FLX=1&K=1&DST=1&BN=6&tab=tabP"
 )
 
 RELEVANT_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
@@ -346,9 +349,30 @@ def usage_trend(rows):
 # --- FantasyPros market AAV (best-effort scrape) ------------------------------
 
 def _fp_extract_players(html):
-    """Find FantasyPros player rows in either of their known page formats:
-    the legacy `var ecrData = {...}` blob, or a `__NEXT_DATA__` JSON tree
-    (searched recursively for objects that look like priced players)."""
+    """Find FantasyPros player rows in any of their known page formats:
+    the Draft Wizard server-rendered `.ValueTable` rows (current), the legacy
+    `var ecrData = {...}` blob, or a `__NEXT_DATA__` JSON tree (searched
+    recursively for objects that look like priced players)."""
+    found, seen = [], set()
+    for m in re.finditer(
+        r"<tr\s+([^>]*?\bPlayer(QB|RB|WR|TE|K|DST)\b[^>]*)>(.*?)</tr>", html, re.S
+    ):
+        attrs, pos, body = m.groups()
+        vm = re.search(r"\bv='(-?\d+)'", attrs)
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", body, re.S)
+        if not vm or len(tds) < 2:
+            continue
+        name = re.sub(r"<span[^>]*>.*?</span>", "", tds[1], flags=re.S)  # injury tags
+        name = re.sub(r"<[^>]+>", "", name)
+        name = re.sub(r"\s*\([^)]*\)\s*$", "", name)   # "Josh Allen (BUF - QB)"
+        name = re.sub(r",\s*[A-Z]{2,3}$", "", name.strip())  # "Josh Allen, BUF"
+        key = (name, pos)
+        if name and key not in seen:                   # rows repeat across tabs
+            seen.add(key)
+            found.append({"player_name": name, "player_position_id": pos,
+                          "player_aav": int(vm.group(1))})
+    if found:
+        return found
     m = re.search(r"var\s+ecrData\s*=\s*(\{.*?\});", html, re.S)
     if m:
         try:
@@ -391,9 +415,14 @@ def fetch_fantasypros_aav():
     players = _fp_extract_players(html)
     if not players:
         raise RuntimeError("FantasyPros page layout changed — use CSV import for AAV instead")
-    index = {}
+    index, initials = {}, {}
     for p in db.all_players():
-        index[(norm_name(p["name"]), p["position"])] = p["id"]
+        nm = norm_name(p["name"])
+        index[(nm, p["position"])] = p["id"]
+        parts = nm.split(" ", 1)
+        if len(parts) == 2:  # FP abbreviates some first names ("J. Croskey-Merritt")
+            k = (parts[0][:1] + " " + parts[1], p["position"])
+            initials[k] = None if k in initials else p["id"]  # ambiguous -> drop
     matched = 0
     for p in players:
         pos = _norm_pos(re.sub(r"\d+$", "", p.get("player_position_id", "") or ""))
@@ -402,7 +431,8 @@ def fetch_fantasypros_aav():
             aav = float(str(aav).lstrip("$"))
         except (TypeError, ValueError):
             continue
-        pid = index.get((norm_name(p.get("player_name", "")), pos))
+        nm = norm_name(p.get("player_name", ""))
+        pid = index.get((nm, pos)) or initials.get((nm, pos))
         if pid and aav > 0:
             db.set_market_aav(pid, aav)
             matched += 1
