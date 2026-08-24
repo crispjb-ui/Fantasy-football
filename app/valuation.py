@@ -164,8 +164,11 @@ def _apply_market_temperament(pool, cfg, total_money, total_slots):
         raw[p["id"]] = v * (1 + premium * (v / vmax) ** 2) if v > 0 else 0.0
     raw_top = sorted(raw.values(), reverse=True)[:total_slots]
     scale = (min(total_money, pool_money) / sum(raw_top)) if sum(raw_top) else 1.0
+    cap = cfg.get("top_price_cap")  # room's historical ceiling (see server._top_price_cap)
     for p in pool:
         exp = raw[p["id"]] * scale
+        if cap:
+            exp = min(exp, cap)
         p["expected_price"] = round(max(1.0, exp), 1) if p["value"] >= 1 else p["value"]
         # Edge: positive means the room should let you have him below fair value.
         p["edge"] = round(p["value"] - p["expected_price"], 1)

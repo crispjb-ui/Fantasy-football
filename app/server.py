@@ -23,7 +23,25 @@ WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 def _valued_pool():
     cfg = db.get_config()
     cfg["league_money"] = sum(t.get("budget") or cfg["auction_budget"] for t in db.teams())
+    cfg["top_price_cap"] = _top_price_cap(cfg)
     return valuation.compute_values(db.all_players(), cfg), cfg
+
+
+def _top_price_cap(cfg):
+    """Empirical ceiling on expected prices: across every imported draft, no
+    auction sale (keepers excluded — formula prices) has beaten ~4% of league
+    money. The elite-premium curve is quadratic and overshoots the single top
+    player without this anchor. 110% of the best-ever share leaves headroom
+    for a new record; None (no cap) until history is imported."""
+    base_money = cfg["num_teams"] * cfg["auction_budget"]
+    shares = {}
+    for h in db.history():
+        if not h.get("is_keeper"):
+            s = h["season"]
+            shares[s] = max(shares.get(s, 0), h["price"] / base_money)
+    if not shares:
+        return None
+    return round(1.10 * max(shares.values()) * cfg.get("league_money", base_money), 1)
 
 
 def _draft_state():

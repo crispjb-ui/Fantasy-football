@@ -770,6 +770,16 @@ check("all-time ranking has 10 managers, Farmer first", len(r["all_time"]) == 10
       r["all_time"][0]["key"] == "Farmer" and len(r["all_time"][0]["titles"]) == 6, str(r["all_time"][0]))
 check("history formula states independence", "independent" in r["formula"].lower(), r["formula"][:80])
 
+# --- expected-price ceiling from room history ----------------------------------------
+_pool_cap, _cfg_cap = _srv._valued_pool()
+check("expected price capped at room's historical ceiling",
+      _cfg_cap.get("top_price_cap") is not None and
+      max(p["expected_price"] for p in _pool_cap) <= _cfg_cap["top_price_cap"] + 0.5,
+      f"cap={_cfg_cap.get('top_price_cap')} max={max(p['expected_price'] for p in _pool_cap)}")
+check("ceiling still above fair value for the top player (premium intact)",
+      max(p["expected_price"] for p in _pool_cap) >= max(p["value"] for p in _pool_cap),
+      str((max(p["expected_price"] for p in _pool_cap), max(p["value"] for p in _pool_cap))))
+
 # --- keeper export (draft room import feed) ------------------------------------------
 r, s = call("GET", "/api/keepers/export")
 check("keeper export serves keepers with alias + price", s == 200 and len(r["keepers"]) >= 1 and
