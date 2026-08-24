@@ -447,7 +447,7 @@ const FHO: React.FC = () => {
 const Stakes: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const items = ["$650 BUY-IN.", "$3,000 FOR FIRST.", "NO MERCY."];
+  const items = ["$675 BUY-IN.", "$3,000 FOR FIRST.", "NO MERCY."];
   return (
     <AbsoluteFill
       style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 90 }}
