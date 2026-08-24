@@ -2,9 +2,10 @@
 
 Notable mechanics: draft picks traded (2016-2020 era), then keeper RIGHTS and
 DRAFT DOLLARS (2023-), e.g. "$100 2025 Draft Dollars" adjusts that team's
-auction budget. The 2025-season block implies these 2026 budget adjustments:
-Lesesne +100, Link -100, Crisp +60, Byrd -60, Ned +45, Omar -35, Farmer -10
-(everyone else $500 base). Enter/adjust in Data & Setup before draft night.
+auction budget. Net 2026 budget adjustments (2025-season trades plus the
+Aug 2026 Taylor rights sale): Lesesne +82, Link -82, Crisp +60, Byrd -60,
+Ned +45, Omar -35, Farmer -10 (everyone else $500 base). Enter/adjust in
+Data & Setup before draft night.
 """
 
 TRADES = {
@@ -85,6 +86,9 @@ TRADES = {
   "Face gets $75 2025 draft dollars + Shakir; Byrd gets Alvin Kamara + AJ Brown (-$75)",
   "Face gets $20 2025 draft dollars + Etienne & Hunter Henry; asians get Brian Robinson Jr + Brock Purdy (-$20)",
  ],
+ 2026: [
+  "PRE-DRAFT: Link gets $18 2026 draft dollars; Peaches gets rights to keep Jonathan Taylor (-$18)",
+ ],
  2025: [
   "PRE-DRAFT: Byrd gets $50 2025 draft dollars; Face gets D. Achane (-$50)",
   "PRE-DRAFT: Peaches gets $30 2025 draft dollars; shoot gets Jayden Daniels + M. Nabers",
@@ -97,8 +101,11 @@ TRADES = {
  ],
 }
 
-# Net 2026 auction-budget adjustments implied by the 2025-season trades above.
-BUDGET_2026 = {"Lesesne": 100, "Link": -100, "Crisp": 60, "Byrd": -60,
+# Net 2026 auction-budget adjustments implied by the trades above: the
+# 2025-season dollars (Lesesne +100, Link -100, Crisp +60, Byrd -60, Ned +45,
+# Omar -35, Farmer -10) plus the Aug 2026 pre-draft Taylor rights sale
+# (Lesesne -18, Link +18).
+BUDGET_2026 = {"Lesesne": 82, "Link": -82, "Crisp": 60, "Byrd": -60,
                "Ned": 45, "Omar": -35, "Farmer": -10}
 
 # Keeper RIGHTS that legitimately moved via 2025 trades (player -> new owner
