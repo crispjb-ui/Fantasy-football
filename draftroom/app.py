@@ -82,11 +82,18 @@ def connect():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        # ThreadingHTTPServer = one connection per request thread. Without a
+        # busy timeout a write that lands while another thread holds the write
+        # lock fails instantly with "database is locked" — mid-draft poison.
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(SCHEMA)
         try:
             conn.execute("ALTER TABLE pool ADD COLUMN adp REAL")
         except sqlite3.OperationalError:
             pass
+        # A player can be sold once, ever — enforce at the DB so even a race
+        # between two scorekeeper devices cannot double-draft.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_picks_pool ON picks(pool_id)")
         if conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 0:
             conn.executemany("INSERT INTO teams (id, name, budget) VALUES (?,?,?)",
                              [(i, f"Team {i}", DEFAULTS["budget"]) for i in range(1, 11)])
@@ -242,6 +249,20 @@ def api_players(q, body):
     return {"players": out}
 
 
+def _pool_id_by_name(conn, name, pos=None):
+    """Resolve a pool row by normalized name, preferring an exact position
+    match — two players can share a normalized name at different positions."""
+    rows = conn.execute("SELECT id, position FROM pool WHERE norm=?",
+                        (norm_name(name),)).fetchall()
+    if not rows:
+        return None
+    if pos:
+        for r in rows:
+            if r["position"] == pos:
+                return r["id"]
+    return rows[0]["id"]
+
+
 def api_pick(q, body):
     err = check_pin(body)
     if err:
@@ -258,8 +279,7 @@ def api_pick(q, body):
         conn.execute("INSERT OR IGNORE INTO pool (name, norm, position) VALUES (?,?,?)",
                      (name, norm_name(name), pos))
         conn.commit()
-        pool_id = conn.execute("SELECT id FROM pool WHERE norm=?",
-                               (norm_name(name),)).fetchone()["id"]
+        pool_id = _pool_id_by_name(conn, name, pos)
     pool_id = int(pool_id or 0)
     player = conn.execute("SELECT * FROM pool WHERE id=?", (pool_id,)).fetchone()
     if not player:
@@ -277,9 +297,13 @@ def api_pick(q, body):
     if price > team["max_bid"]:
         return {"error": f"HARD STOP: {team['name']} can only bid up to ${team['max_bid']} "
                          f"(${team['budget_left']} left, {team['slots_left']} slots to fill)"}
-    conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) VALUES (?,?,?,?,?)",
-                 (pool_id, team_id, price, 1 if is_keeper else 0, time.time()))
-    conn.commit()
+    try:
+        conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) VALUES (?,?,?,?,?)",
+                     (pool_id, team_id, price, 1 if is_keeper else 0, time.time()))
+        conn.commit()
+    except sqlite3.IntegrityError:  # lost a race with another device
+        conn.rollback()
+        return {"error": f"{player['name']} was already drafted"}
     audit(f"SOLD {player['name']} to {team['name']} for ${price}"
           + (" (keeper)" if is_keeper else ""))
     if not is_keeper:
@@ -300,6 +324,11 @@ def api_undo(q, body):
         return {"error": "nothing to undo"}
     conn.execute("DELETE FROM picks WHERE id=?", (r["id"],))
     conn.commit()
+    # Roll back the nomination advance the sale caused, so undo + re-enter
+    # doesn't skip a team's turn in the rotation.
+    order = meta_get("nom_order") or [t["id"] for t in conn.execute("SELECT id FROM teams")]
+    if order:
+        meta_set("nom_idx", (meta_get("nom_idx", 0) - 1) % len(order))
     audit(f"UNDO {r['name']}")
     return {"ok": True, "undone": r["name"]}
 
@@ -566,15 +595,14 @@ def _import_keepers(url):
         pos = (k.get("position") or "").strip().upper() or None
         conn.execute("INSERT OR IGNORE INTO pool (name, norm, position) VALUES (?,?,?)",
                      (name, norm_name(name), pos))
-        row = conn.execute("SELECT id FROM pool WHERE norm=?",
-                           (norm_name(name),)).fetchone()
-        if row["id"] in drafted:
+        pool_id = _pool_id_by_name(conn, name, pos)
+        if pool_id in drafted:
             skipped.append(f"{name} already on a roster")
             continue
         conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) "
                      "VALUES (?,?,?,1,?)",
-                     (row["id"], team_id, int(k.get("price") or 0), time.time()))
-        drafted.add(row["id"])
+                     (pool_id, team_id, int(k.get("price") or 0), time.time()))
+        drafted.add(pool_id)
         imported += 1
     conn.commit()
     audit(f"KEEPERS imported from copilot ({imported} added, {len(skipped)} skipped)")

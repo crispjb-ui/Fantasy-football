@@ -96,9 +96,29 @@ r, s = call("GET", "/api/players?q=deep sleeper")
 check("added player searchable", any(p["name"] == "Deep Sleeper Jones" and p["position"] == "WR"
                                      for p in r["players"]), str(r))
 
-# undo + delete
+# undo + delete — and undo must roll the nominator back, not skip a turn
+r, s = call("GET", "/api/board")
+nom_pre_undo = r["nominating"]
+idx_pre = r["nom_order"].index(next(t["id"] for t in r["teams"] if t["name"] == nom_pre_undo))
 r, s = call("POST", "/api/undo", {"pin": PIN})
 check("undo", s == 200 and r["undone"] == "Mystery Rookie", str(r))
+r, s = call("GET", "/api/board")
+idx_post = r["nom_order"].index(next(t["id"] for t in r["teams"] if t["name"] == r["nominating"]))
+check("undo rolls nominator back one step",
+      idx_post == (idx_pre - 1) % len(r["nom_order"]),
+      f"pre={idx_pre} post={idx_post}")
+
+# double-draft is impossible at the DB layer, not just the API check
+import sqlite3 as _sq
+_conn = _sq.connect(os.environ["DRAFTROOM_DB"])
+try:
+    _conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) VALUES (1, 5, 1, 0, 1)")
+    _conn.commit()
+    dup_blocked = False
+except _sq.IntegrityError:
+    dup_blocked = True
+_conn.close()
+check("unique index blocks double-draft at DB level", dup_blocked)
 
 # keeper doesn't advance nominator and flags in sync
 r, s = call("GET", "/api/board")
