@@ -35,6 +35,7 @@ export const FILM_FPS = 30;
 const OPEN_LEN = 150;
 const FACE_NAMES = NAME_HISTORY.Farmer; // the whole saga, 2007 -> Allen Face One
 const FACE_LEN = 90 + FACE_NAMES.length * 13 + 90;
+const LEADER_LEN = 150; // the toast photo beat right after the saga
 const PER_RECORD = 80;
 const RECORDS_LEN = 40 + 6 * PER_RECORD;
 const LASTYEAR_LEN = 460;
@@ -48,7 +49,8 @@ const TICKS_LEN = 60 + 10 * PER_TICK;
 const T_MAP = OPEN_LEN;
 const T_PLAQUE = T_MAP + MAP_EMBED_DURATION;
 const T_FACE = T_PLAQUE + PLAQUE_DURATION;
-const T_RECORDS = T_FACE + FACE_LEN;
+const T_LEADER = T_FACE + FACE_LEN;
+const T_RECORDS = T_LEADER + LEADER_LEN;
 const T_LASTYEAR = T_RECORDS + RECORDS_LEN;
 const T_LEDGER = T_LASTYEAR + LASTYEAR_LEN;
 const T_STAKES = T_LEDGER + LEDGER_LEN;
@@ -196,6 +198,48 @@ const FaceSaga: React.FC = () => {
   );
 };
 
+/* Scene 4.2 — the champion's toast. Straight cut from the Face saga's
+   "DEFENDING CHAMPION" beat into the real man, martini raised. */
+const Leader: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const img = spring({ frame, fps, config: { damping: 14 } });
+  const cap = spring({ frame: frame - 40, fps, config: { damping: 11, stiffness: 170 } });
+  return (
+    <AbsoluteFill style={{ background: NAVY_DEEP }}>
+      <Img
+        src={staticFile("photos/2026-leader.jpg")}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "50% 22%",
+          opacity: img,
+          transform: `scale(${1.08 - img * 0.08})`,
+        }}
+      />
+      <AbsoluteFill
+        style={{ background: "linear-gradient(to top, rgba(4,9,18,.88) 0%, rgba(4,9,18,0) 38%)" }}
+      />
+      <div style={{ position: "absolute", bottom: 70, width: "100%", textAlign: "center" }}>
+        <div
+          style={{
+            ...font,
+            fontSize: 92,
+            letterSpacing: 6,
+            color: WHITE,
+            opacity: cap,
+            transform: `translateY(${(1 - cap) * 40}px)`,
+            textShadow: `0 0 80px ${CAROLINA}aa, 0 4px 30px rgba(0,0,0,.9)`,
+          }}
+        >
+          “I AM YOUR LEADER.”
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 /* Scene 4.5 — 20 years of numbers */
 const RECORDS = [
   { num: "12-0-1", label: "THE PERFECT SEASON", sub: "SINGER'S SECRET SAUCE · 2020" },
@@ -323,8 +367,9 @@ const LastYear: React.FC = () => {
 
 /* Scene 4.8 — the ledger: trades, and the 2026 board already in motion */
 const BUDGET_MOVES: [string, number][] = [
-  ["LESESNE", 100], ["CRISP", 60], ["NED", 45],
-  ["FARMER", -10], ["OMAR", -35], ["BYRD", -60], ["LINK", -100],
+  // net of the Aug 2026 Taylor rights sale (Lesesne -18 -> Link +18)
+  ["LESESNE", 82], ["CRISP", 60], ["NED", 45],
+  ["FARMER", -10], ["OMAR", -35], ["BYRD", -60], ["LINK", -82],
 ];
 
 const Ledger: React.FC = () => {
@@ -404,7 +449,7 @@ const Ledger: React.FC = () => {
             opacity: spring({ frame: local - 130, fps, config: { damping: 13 } }),
           }}
         >
-          SAQUON, CHASE &amp; HENRY ALREADY MOVED. THE BOARD IS RIGGED BEFORE PICK ONE.
+          SAQUON, CHASE, HENRY — NOW TAYLOR&apos;S RIGHTS FOR $18. THE BOARD IS RIGGED BEFORE PICK ONE.
         </div>
       </div>
     </AbsoluteFill>
@@ -447,29 +492,37 @@ const FHO: React.FC = () => {
 const Stakes: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const items = ["$675 BUY-IN.", "$3,000 FOR FIRST.", "NO MERCY."];
+  const items: [string, string][] = [["$675", "BUY-IN."], ["$3,000+", "FOR FIRST."], ["NO", "MERCY."]];
   return (
-    <AbsoluteFill
-      style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center", flexDirection: "row", gap: 90 }}
-    >
-      {items.map((t, i) => {
-        const s = spring({ frame: frame - i * 16, fps, config: { damping: 10, stiffness: 190 } });
-        return (
-          <div
-            key={t}
-            style={{
-              ...font,
-              fontSize: 118,
-              color: i === 2 ? RED : WHITE,
-              opacity: s,
-              transform: `scale(${0.5 + s * 0.5})`,
-              textShadow: i === 2 ? "0 0 70px rgba(217,79,79,.5)" : `0 0 40px ${CAROLINA}44`,
-            }}
-          >
-            {t}
-          </div>
-        );
-      })}
+    <AbsoluteFill style={{ background: NAVY_DEEP, justifyContent: "center", alignItems: "center" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          width: 1840,
+          gap: 24,
+          alignItems: "center",
+        }}
+      >
+        {items.map(([num, label], i) => {
+          const s = spring({ frame: frame - i * 16, fps, config: { damping: 10, stiffness: 190 } });
+          return (
+            <div
+              key={label}
+              style={{
+                ...font,
+                color: i === 2 ? RED : WHITE,
+                opacity: s,
+                transform: `scale(${0.5 + s * 0.5})`,
+                textShadow: i === 2 ? "0 0 70px rgba(217,79,79,.5)" : `0 0 40px ${CAROLINA}44`,
+              }}
+            >
+              <div style={{ fontSize: 128, lineHeight: 1 }}>{num}</div>
+              <div style={{ fontSize: 62, letterSpacing: 3, marginTop: 18 }}>{label}</div>
+            </div>
+          );
+        })}
+      </div>
     </AbsoluteFill>
   );
 };
@@ -608,6 +661,9 @@ export const Film: React.FC = () => (
     </Sequence>
     <Sequence from={T_FACE} durationInFrames={FACE_LEN}>
       <FaceSaga />
+    </Sequence>
+    <Sequence from={T_LEADER} durationInFrames={LEADER_LEN}>
+      <Leader />
     </Sequence>
     <Sequence from={T_RECORDS} durationInFrames={RECORDS_LEN}>
       <Records />
