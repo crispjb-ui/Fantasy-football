@@ -503,12 +503,14 @@ async function refreshDraft() {
   renderChips();
 }
 
-/* Live draft feed: poll the League Draft Room or Google Sheet (both 5s). */
+/* Live draft feed: poll the League Draft Room (5s) or Google Sheet (10s —
+   Google's CSV export rate-limits sustained polling much faster than that). */
 let pollBusy = false;
 setInterval(async () => {
   if (S.view !== "draft" || !S.app || pollBusy) return;
   const useRoom = S.app.room && S.app.room.enabled;
   if (!useRoom && !(S.app.sheet && S.app.sheet.enabled)) return;
+  if (!useRoom && Date.now() % 10000 >= 5000) return;  // sheet: every other tick
   pollBusy = true;
   try {
     const r = await api(useRoom ? "/api/room/sync" : "/api/sheet/sync", {});
