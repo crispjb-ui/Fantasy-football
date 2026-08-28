@@ -40,7 +40,9 @@ window.onhashchange = () => { S.view = location.hash.slice(1) || "home"; render(
 async function refresh() {
   try {
     const b = await api("/api/board");
-    const changed = !S.board || b.picks_made !== S.board.picks_made;
+    // Compare the whole payload, not just picks_made — skips, undos, renames,
+    // and budget edits must repaint spectator screens too.
+    const changed = !S.board || JSON.stringify(b) !== JSON.stringify(S.board);
     S.board = b;
     // TV only re-renders on change (or every tick when a countdown is on),
     // so scrolling the best-available columns isn't constantly reset.
