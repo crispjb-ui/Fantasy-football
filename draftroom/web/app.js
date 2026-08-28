@@ -269,7 +269,7 @@ function bestAvailableGrid(compact) {
   }
   const positions = compact ? ["QB", "RB", "WR", "TE"] : ["QB", "RB", "WR", "TE", "K", "DST"];
   return `<div class="bagrid" ${compact ? "" : `style="grid-template-columns:repeat(${positions.length},minmax(0,1fr))"`}>` + positions.map(pos => {
-    const list = (b.best_available[pos] || []).slice(0, compact ? 12 : 30);
+    const list = b.best_available[pos] || [];
     return `<div class="bacol">
       <div class="bahead"><span class="pos pos-${pos}">${pos}</span>
         <span class="dim" style="white-space:nowrap">${b.remaining_ranked[pos] ?? 0} left · ${b.drafted_pos[pos] || 0} gone</span></div>
