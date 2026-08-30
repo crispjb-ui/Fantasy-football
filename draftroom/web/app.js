@@ -458,7 +458,11 @@ function renderSetup() {
       <button class="btn" id="expCsv">Results CSV</button>
       <button class="btn" id="expEspn">ESPN entry list</button>
       <a class="btn" href="/api/export/record" download>⬇ Full league record CSV (2021→now)</a>
+      <a class="btn" href="/api/export/sheet" download>⬇ Master File paste (TSV)</a>
     </div>
+    <div class="note" style="margin:4px 0 8px">Master File paste matches the League UNC Master File draft-tab
+      columns (Player (NFL - POS) | POS | Team | 1 | $price | one column per manager) — paste it straight
+      into the year's tab; keepers carry a K in the spare column after the manager block.</div>
     <div class="note" style="margin:4px 0 8px">The record CSV bundles every past auction plus this one once
       it has sales — download it after the draft and drop it in the league sheet/drive as the permanent record.</div>
     <pre id="expOut" class="note" style="white-space:pre-wrap;max-height:300px;overflow:auto"></pre>

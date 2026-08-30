@@ -759,7 +759,8 @@ def api_reset(q, body):
 def _all_sales():
     conn = connect()
     rows = conn.execute(
-        "SELECT picks.*, pool.name AS pname, pool.position AS pos FROM picks "
+        "SELECT picks.*, pool.name AS pname, pool.position AS pos, "
+        "pool.nfl_team AS nfl FROM picks "
         "JOIN pool ON pool.id=picks.pool_id ORDER BY picks.id").fetchall()
     teams = {t["id"]: t["name"] for t in conn.execute("SELECT * FROM teams")}
     return rows, teams
@@ -781,6 +782,37 @@ def api_export_csv(q, body):
     for r in rows:
         lines.append(f"{teams.get(r['team_id'], '')},{r['pname']},{r['price']},{r['pos'] or ''}")
     return {"csv": "\n".join(lines)}
+
+
+# Column order of the League UNC Master File draft tabs (fixed across years).
+SHEET_TEAM_ORDER = ["Singer", "Farmer", "Link", "Crisp", "Nova", "Omar",
+                    "Rob", "Lesesne", "Ned", "Byrd"]
+
+# Pool uses Sleeper-style NFL codes; the master sheet uses FantasyPros style.
+_SHEET_NFL = {"JAX": "JAC", "WSH": "WAS"}
+
+
+def api_export_sheet(q, body):
+    """Paste-ready block for the League UNC Master File's draft tab: same
+    column layout as every historical year (pick | 'Name (NFL - POS)' | POS |
+    Estimate | Team | 1 | price | one column per manager with the price under
+    the winner). Tab-separated so one paste lands each value in its own cell;
+    keepers get a K in the spare column right of the manager block."""
+    rows, teams = _all_sales()
+    header = (["", "PLAYER NAME", "POS", "Estimate", "", "Team", "", "Value", ""]
+              + SHEET_TEAM_ORDER + ["Keeper"])
+    lines = ["\t".join(header)]
+    for i, r in enumerate(rows, 1):
+        nfl = _SHEET_NFL.get(r["nfl"] or "", r["nfl"] or "?")
+        team = teams.get(r["team_id"], "")
+        spread = [f"${r['price']}" if t == team else "0" for t in SHEET_TEAM_ORDER]
+        lines.append("\t".join(
+            [str(i), f"{r['pname']} ({nfl} - {r['pos'] or '?'})", r["pos"] or "",
+             "", "", team, "1", f"${r['price']}", ""]
+            + spread + (["K"] if r["is_keeper"] else [""])))
+    return {"_file": {"name": f"master-sheet-paste-{setting('season')}.tsv",
+                      "mime": "text/tab-separated-values",
+                      "content": "\n".join(lines) + "\n"}}
 
 
 def api_export_espn(q, body):
@@ -826,6 +858,7 @@ ROUTES = {
     ("POST", "/api/copilot/sync"): api_copilot_sync,
     ("GET", "/api/sync"): api_sync,
     ("GET", "/api/export/csv"): api_export_csv,
+    ("GET", "/api/export/sheet"): api_export_sheet,
     ("GET", "/api/export/espn"): api_export_espn,
     ("GET", "/api/history"): api_history,
     ("GET", "/api/export/record"): api_export_record,
