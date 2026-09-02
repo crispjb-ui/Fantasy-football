@@ -785,6 +785,41 @@ r, s = call("GET", "/api/keepers/export")
 check("keeper export serves keepers with alias + price", s == 200 and len(r["keepers"]) >= 1 and
       all("alias" in k and "price" in k and "player" in k for k in r["keepers"]), str(r)[:150])
 
+# --- endgame roster guard (no team may finish without every startable position) --------
+# Draft room side: shrink rosters to 3 and walk empty team 9 into the endgame.
+_room.api_setup({}, {"pin": "0000", "roster_size": 3})
+_gq1 = _room.api_pool_add({}, {"pin": "0000", "name": "Guard Qb One", "position": "QB"})["id"]
+_gq2 = _room.api_pool_add({}, {"pin": "0000", "name": "Guard Qb Two", "position": "QB"})["id"]
+_gk = _room.api_pool_add({}, {"pin": "0000", "name": "Guard Kicker", "position": "K"})["id"]
+r = _room.api_pick({}, {"pin": "0000", "player_id": _gq1, "team_id": 9, "price": 1})
+check("room guard: need-filling pick allowed", r.get("ok") is True, str(r))
+r = _room.api_pick({}, {"pin": "0000", "player_id": _gq2, "team_id": 9, "price": 1})
+check("room guard: blocks pick that strands a required position",
+      "ROSTER STOP" in (r.get("error") or ""), str(r))
+r = _room.api_pick({}, {"pin": "0000", "player_id": _gk, "team_id": 9, "price": 1})
+check("room guard: K still buyable at the death", r.get("ok") is True, str(r))
+_teams9, _ = _room.team_states()
+check("room board reports remaining needs",
+      "K" not in _teams9[9]["needs"] and "RB" in _teams9[9]["needs"], str(_teams9[9]["needs"]))
+
+# Copilot side: same rule on /api/pick (roster_size shrunk via config override).
+r, s = call("GET", "/api/draft")
+_taken = {p["player_id"] for p in r["picks"]}
+r, s = call("GET", "/api/players")
+_fresh = r["players"]
+_qbs = [p for p in _fresh if p["id"] not in _taken and p["position"] == "QB"][:2]
+_kk = next(p for p in _fresh if p["id"] not in _taken and p["position"] == "K")
+_db.add_pick(_qbs[0]["id"], 10, 1, is_keeper=False)
+_n10 = sum(1 for pk in _db.picks() if pk["team_id"] == 10)
+_ov = _db.meta_get("config_overrides", {})
+_ov["roster_size"] = _n10 + 1
+_db.meta_set("config_overrides", _ov)
+r, s = call("POST", "/api/pick", {"player_id": _qbs[1]["id"], "team_id": 10, "price": 1})
+check("copilot guard: blocks non-need pick in the endgame",
+      s == 400 and "ROSTER STOP" in (r.get("error") or ""), str(r))
+r, s = call("POST", "/api/pick", {"player_id": _kk["id"], "team_id": 10, "price": 1})
+check("copilot guard: need-filling pick allowed", s == 200 and r.get("ok") is True, str(r))
+
 srv.shutdown()
 print()
 if failures:

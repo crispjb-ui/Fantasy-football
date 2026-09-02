@@ -141,6 +141,24 @@ def check_pin(body):
 
 # --- board state --------------------------------------------------------------
 
+# Startable-lineup minimums (FLEX excluded — any spare RB/WR/TE covers it).
+# Endgame guard: once a team's open slots are only just enough to cover its
+# unfilled starting positions, every remaining pick must fill one — this is
+# what stops a team from finishing the draft with no kicker.
+POSITION_MINS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "DST": 1, "K": 1}
+
+
+def needed_positions(roster):
+    """Positions a roster still owes its starting lineup, e.g. ['RB','K']."""
+    have = {}
+    for p in roster:
+        have[p["position"]] = have.get(p["position"], 0) + 1
+    out = []
+    for pos, n in POSITION_MINS.items():
+        out += [pos] * max(0, n - have.get(pos, 0))
+    return out
+
+
 def team_states():
     conn = connect()
     teams = {t["id"]: {"id": t["id"], "name": t["name"], "budget": t["budget"],
@@ -163,6 +181,7 @@ def team_states():
         t["budget_left"] = t["budget"] - t["spent"]
         t["max_bid"] = max(0, t["budget_left"] - (t["slots_left"] - 1) * min_bid) \
             if t["slots_left"] > 0 else 0
+        t["needs"] = needed_positions(t["roster"])
     return teams, rows
 
 
@@ -297,6 +316,11 @@ def api_pick(q, body):
     if price > team["max_bid"]:
         return {"error": f"HARD STOP: {team['name']} can only bid up to ${team['max_bid']} "
                          f"(${team['budget_left']} left, {team['slots_left']} slots to fill)"}
+    needs = team["needs"]
+    if player["position"] not in needs and len(needs) > team["slots_left"] - 1:
+        return {"error": f"ROSTER STOP: {team['name']} has {team['slots_left']} slot(s) left "
+                         f"but still needs {'/'.join(needs)} — this pick must fill one of those "
+                         f"or the lineup can't start legally"}
     try:
         conn.execute("INSERT INTO picks (pool_id, team_id, price, is_keeper, ts) VALUES (?,?,?,?,?)",
                      (pool_id, team_id, price, 1 if is_keeper else 0, time.time()))

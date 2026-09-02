@@ -52,12 +52,25 @@ async function refresh() {
 setInterval(refresh, 2500);
 
 /* ---------- shared pieces ---------- */
+function needsBadge(t) {
+  // Only shout when the endgame is close: slack = spare slots beyond the
+  // unfilled starting positions. 0 = every pick is forced (server blocks
+  // anything else); 1-2 = heads-up before it locks.
+  const needs = t.needs || [];
+  if (!needs.length || t.slots_left <= 0) return "";
+  const slack = t.slots_left - needs.length;
+  if (slack <= 0) return `<div class="sub" style="color:var(--red);font-weight:700">must draft ${needs.join("/")}</div>`;
+  if (slack <= 2) return `<div class="sub" style="color:var(--amber)">still needs ${needs.join("/")}</div>`;
+  return "";
+}
+
 function budgetsGrid(hl) {
   return `<div class="teamgrid">` + S.board.teams.map(t => `
     <div class="teamcard ${t.id === hl ? "me" : ""}">
       <div class="nm">${esc(t.name)}${S.board.nominating === t.name ? " 🎤" : ""}</div>
       <div class="b">$${t.budget_left}</div>
       <div class="sub">max bid $${t.max_bid} · ${t.slots_left} slots</div>
+      ${needsBadge(t)}
     </div>`).join("") + `</div>`;
 }
 
@@ -334,6 +347,7 @@ function teamSpotlight() {
       <span>max bid <b>$${t.max_bid}</b></span>
       <span><b>${t.slots_left}</b> slots open</span>
       <span>spent <b>$${t.spent}</b></span>
+      ${(t.needs || []).length ? `<span style="color:var(--amber)">needs <b>${t.needs.join("/")}</b></span>` : ""}
     </div>
     <div style="margin-top:8px;columns:2;column-gap:14px">${lineupSheet(t)}</div>
   </div>`;

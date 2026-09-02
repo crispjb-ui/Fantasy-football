@@ -445,6 +445,21 @@ def api_pick(q, body):
         return {"error": f"{team['name']} has no roster spots left"}
     if price > team["max_bid"]:
         return {"error": f"{team['name']} can only bid up to ${team['max_bid']}"}
+    # Endgame roster guard: once open slots are only just enough to cover the
+    # unfilled starting positions (FLEX excluded — spare RB/WR/TE covers it),
+    # every remaining pick must fill one. No team leaves without a kicker.
+    mins = {k: v for k, v in cfg["starters"].items() if k != "FLEX"}
+    have = {}
+    for p in team["players"]:
+        have[p["position"]] = have.get(p["position"], 0) + 1
+    needs = []
+    for pos, n in mins.items():
+        needs += [pos] * max(0, n - have.get(pos, 0))
+    player = next((p for p in pool if p["id"] == pid), None)
+    if player and player["position"] not in needs and len(needs) > team["slots_left"] - 1:
+        return {"error": f"ROSTER STOP: {team['name']} has {team['slots_left']} slot(s) left "
+                         f"but still needs {'/'.join(needs)} — this pick must fill one of those "
+                         f"or the lineup can't start legally"}
     db.add_pick(pid, team_id, price, is_keeper=False)
     _maybe_backup()
     return {"ok": True}
