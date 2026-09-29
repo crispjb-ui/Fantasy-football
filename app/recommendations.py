@@ -561,7 +561,10 @@ def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, wee
         # 10 — it ranked Hall's replacement 7th the week Hall went down.
         base = (0.7 * week_gap * games + 0.3 * max(gap, -10.0)) if weekly_mode else gap
         trend = trending.get(p["id"], 0)
-        score = base + trend_heat(trend)
+        # K/DST edges are small and noisy — damp them the way the draft valuation does,
+        # or a kicker at +0.7/wk outranks real targets. The Lineup tab streams them separately.
+        mult = cfg.get("position_value_mult", {}).get(p["position"], 1.0)
+        score = (base + trend_heat(trend)) * mult
         if gap <= 0 and week_gap <= 0 and trend == 0:
             continue
         # one week's projection is noisy — when only the weekly gap is positive, bid on half of it

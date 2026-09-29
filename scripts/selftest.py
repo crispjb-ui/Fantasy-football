@@ -892,6 +892,15 @@ check("million-add heat floors the bid (12%-30%)", _hot["low"] >= 22 and _hot["h
 _cold = _rec.faab_suggestion(-50, _fa_a, 188, 14, _cfg, trend=0)
 check("no heat, no gap -> token bid", _cold["high"] <= 2, str(_cold))
 check("trend heat is monotonic and capped", _rec.trend_heat(500_000) < _rec.trend_heat(2_000_000) <= 10.0)
+# a kicker's +0.7/wk must not outrank a receiver's +0.7/wk
+_mine2 = _mine + [{"id": "mk", "name": "My K", "position": "K", "points": 130, "replacement_pts": 120, "team": "AAA"},
+                  {"id": "mw", "name": "My WR", "position": "WR", "points": 100, "replacement_pts": 90, "team": "AAA"}]
+_fa_k = {"id": "fa-k", "name": "Hot Kicker", "position": "K", "points": 140, "replacement_pts": 120, "team": "DDD"}
+_fa_w = {"id": "fa-w", "name": "Hot WR", "position": "WR", "points": 110, "replacement_pts": 90, "team": "EEE"}
+_wk2 = {**_wk, "mk": {"points": 8.0}, "mw": {"points": 9.0}, "fa-k": {"points": 8.7}, "fa-w": {"points": 9.7}}
+_recs2 = _rec.waiver_recommendations(_mine2 + [_fa_k, _fa_w], _mine2, {"m1", "mk", "mw"}, 188, 8, _cfg, wk_proj=_wk2)
+_order2 = [x["player"]["id"] for x in _recs2]
+check("waivers: K edge damped below an equal WR edge", _order2.index("fa-w") < _order2.index("fa-k"), str(_order2))
 
 # Drop candidates: position-relative, and never the only man at a required slot.
 r, s = call("GET", "/api/waivers?week=8")
