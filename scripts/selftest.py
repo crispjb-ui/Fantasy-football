@@ -849,6 +849,34 @@ check("purge keeps the other roster rows intact", set(_before) <= _after, f"{len
 check("remapped sample row is gone from the pool",
       _conn.execute("SELECT COUNT(*) FROM players WHERE id='smpl:remap-test'").fetchone()[0] == 0)
 
+# --- waivers rank on weekly projections once fetched ------------------------------------
+# Week 8 has matchup projections (loaded above); week 9 has none.
+r, s = call("GET", "/api/waivers?week=8")
+check("waivers: weekly ranking mode when the week's projections exist",
+      s == 200 and r.get("ranking") == "weekly", str(r.get("ranking")))
+_rec = (r.get("recommendations") or [None])[0]
+check("waivers: rows carry this week's points + gap",
+      _rec is not None and "week_pts" in _rec and "week_gap" in _rec and _rec.get("week_src") in ("weekly", "season-est", "bye"),
+      str({k: _rec.get(k) for k in ("week_pts", "week_gap", "week_src")} if _rec else None))
+r, s = call("GET", "/api/waivers?week=9")
+check("waivers: falls back to season ranking without weekly data", r.get("ranking") == "season", str(r.get("ranking")))
+_rec9 = (r.get("recommendations") or [None])[0]
+check("waivers: season mode still reports a season-pace weekly estimate",
+      _rec9 is not None and _rec9.get("week_src") in ("season-est", "bye"), str(_rec9 and _rec9.get("week_src")))
+_dc = (r.get("drop_candidates") or [None])[0]
+check("waivers: drop candidates carry this week's projection", _dc is not None and "week_pts" in _dc, str(_dc)[:120])
+
+# --- ESPN sync stamps the current NFL week ------------------------------------------------
+_db.meta_set("nfl_state", {"week": 1, "season": "2026", "season_type": "regular"})
+_summary = _espn.apply_league_payload({"teams": espn_teams, "status": {"currentMatchupPeriod": 5}})
+_ns = _db.meta_get("nfl_state") or {}
+check("espn sync sets nfl_state.week from the league status",
+      _summary.get("week") == 5 and _ns.get("week") == 5 and _ns.get("season") == "2026", str(_ns))
+r, s = call("GET", "/api/state")
+check("state exposes the synced week for the UI default", (r.get("nfl_state") or {}).get("week") == 5)
+_espn.apply_league_payload({"teams": espn_teams})  # no status -> week untouched
+check("espn sync without status leaves the week alone", (_db.meta_get("nfl_state") or {}).get("week") == 5)
+
 srv.shutdown()
 print()
 if failures:

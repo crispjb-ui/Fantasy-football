@@ -12,7 +12,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import (analytics, db, data_sources, espn, league_history, mock,
+from . import (analytics, config, db, data_sources, espn, league_history, mock,
                recommendations, sample_data, strategy, valuation)
 
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
@@ -968,8 +968,10 @@ def api_waivers(q, body):
     my_spent, rival_faab = _faab_state(cfg)
     faab_left = cfg["faab_budget"] - my_spent
     trending = db.meta_get("trending", {"adds": {}, "drops": {}})
+    wk_proj = db.week_proj(week)
     recs = recommendations.waiver_recommendations(
         pool, my_players, rostered, faab_left, week, cfg, trending=trending["adds"],
+        wk_proj=wk_proj,
     )
     # Bid shading: no point bidding far beyond what the richest rival can pay.
     top_rival = max(rival_faab.values()) if rival_faab else None
@@ -1019,13 +1021,20 @@ def api_waivers(q, body):
     recs.sort(key=lambda x: -x["score"])
 
     # IR-eligible stashes: don't drop them, move them to IR for a free spot.
+    # Drop candidates: in-season, this week's projection is the honest measure of who is
+    # expendable — the preseason season total ranked a PRK-2 receiver coming off an ACL
+    # as the weakest man on the roster. Bye weeks fall back to season pace.
+    def _drop_key(p):
+        wpts, _, src = recommendations.weekly_points(p, wk_proj, week)
+        this_wk = wpts if src == "weekly" else p["points"] / config.GAMES_PER_SEASON
+        return (this_wk, p["points"] - p.get("replacement_pts", 0))
+
     ir_eligible = [p for p in my_players if (p.get("injury") or "") in ("IR", "Out", "PUP")]
     my_sorted = sorted(my_players, key=lambda p: p["points"], reverse=True)
     ir_ids = {p["id"] for p in ir_eligible}
     drop_candidates = [
-        _slim(p) for p in sorted(
-            (p for p in my_players if p["id"] not in ir_ids),
-            key=lambda p: (p["points"] - p.get("replacement_pts", 0)),
+        {**_slim(p), "week_pts": round(_drop_key(p)[0], 1)} for p in sorted(
+            (p for p in my_players if p["id"] not in ir_ids), key=_drop_key,
         )[:6]
     ]
     return {
@@ -1034,6 +1043,7 @@ def api_waivers(q, body):
         "rival_faab": dict(sorted(rival_faab.items(), key=lambda kv: -kv[1])),
         "roster_source": "espn" if _espn_rosters_active() else "draft",
         "week": week,
+        "ranking": "weekly" if wk_proj else "season",
         "recommendations": [
             {**r, "player": _slim(r["player"])} for r in recs
         ],

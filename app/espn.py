@@ -167,6 +167,17 @@ def apply_league_payload(data):
     if records:
         db.meta_set("records", records)
 
+    # Current NFL week straight from ESPN, so the in-season tabs open on the
+    # right week without waiting for a Sleeper state refresh.
+    status = data.get("status") or {}
+    wk = status.get("currentMatchupPeriod") or data.get("scoringPeriodId")
+    try:
+        wk = int(wk)
+    except (TypeError, ValueError):
+        wk = None
+    if wk and wk >= 1:
+        db.meta_set("nfl_state", {**(db.meta_get("nfl_state") or {}), "week": wk, "source": "espn"})
+
     # Fantasy matchup schedule (who plays whom each week)
     league_sched = {}
     for m in data.get("schedule") or []:
@@ -199,6 +210,7 @@ def apply_league_payload(data):
         "schedule_weeks": len(league_sched),
         "marked_me": marked_me,
         "my_espn_team_id": settings.get("my_espn_team_id"),
+        "week": wk,
     }
 
 

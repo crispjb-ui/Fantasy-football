@@ -9,6 +9,7 @@ const S = {
   selIdx: -1,
   card: null,         // /api/player payload
   waiverWeek: 1,
+  weekPinned: false,
   waivers: null,
   pf: { q: "", pos: "", avail: false, sort: "value", dir: -1 },
   lastTeam: null,
@@ -44,7 +45,13 @@ function toast(msg, isErr) {
   toastTimer = setTimeout(() => (t.className = ""), isErr ? 4200 : 2200);
 }
 
-async function loadApp() { S.app = await api("/api/state"); renderChips(); }
+async function loadApp() {
+  S.app = await api("/api/state");
+  // follow the real NFL week until the user pins one by hand
+  const nw = +((S.app.nfl_state || {}).week || 0);
+  if (!S.weekPinned && nw >= 1) S.waiverWeek = nw;
+  renderChips();
+}
 async function loadDraft() { S.draft = await api("/api/draft"); }
 
 /* ---------- header ---------- */
@@ -1074,7 +1081,7 @@ async function renderLineup(gen) {
       </div>
     </div>
   </div>`;
-  $("#lWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; setView(S.view); };
+  $("#lWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; S.weekPinned = true; setView(S.view); };
   $("#lRefresh").onclick = async () => {
     $("#lStatus").textContent = "Fetching…";
     try {
@@ -1203,6 +1210,8 @@ async function renderWaivers(gen) {
       <label class="dim">NFL Week</label>
       <input type="number" id="wWeek" min="1" max="18" value="${w.week}" style="width:70px;padding:7px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text)">
       <span class="chip">FAAB left <b class="money">$${w.faab_left}</b> / $${w.faab_budget}</span>
+      <span class="chip ${w.ranking === "weekly" ? "good" : "warn"}" title="what the +Pts ranking is based on">Ranking: <b>${w.ranking === "weekly" ? "this week's projections" : "season projections"}</b></span>
+      ${w.ranking !== "weekly" ? `<button class="btn small" id="wFetchWeek" title="pull this week's matchup projections so targets rank like ESPN's list">Fetch week ${w.week} projections</button>` : ""}
       ${Object.keys(w.rival_faab || {}).length
         ? `<span class="chip">Richest rival <b>$${Object.values(w.rival_faab)[0]}</b></span>
            <span class="chip">Roster: <b>${w.roster_source === "espn" ? "ESPN live" : "draft log"}</b></span>`
@@ -1214,7 +1223,7 @@ async function renderWaivers(gen) {
     <div class="panel">
       <h2>Top waiver targets</h2>
       <div class="table-wrap">${w.recommendations.length ? `<table>
-        <tr><th>Player</th><th>Upgrades over</th><th class="r">+Pts</th><th class="r">Usage</th><th class="r">Trend</th><th class="r">Bid</th><th></th></tr>` +
+        <tr><th>Player</th><th>Upgrades over</th><th class="r" title="this week's projection (weekly if fetched, else season pace) and the gap over your weakest at the position">This wk</th><th class="r" title="season-long projection gap">+Season</th><th class="r">Usage</th><th class="r">Trend</th><th class="r">Bid</th><th></th></tr>` +
         w.recommendations.map(r => `
         <tr>
           <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span>${
@@ -1223,15 +1232,20 @@ async function renderWaivers(gen) {
             r.handcuff_for ? ` <span class="tag" style="color:var(--purple)" title="backs up your starter">🔗 ${esc(r.handcuff_for)}</span>` : ""}${
             r.block ? ` <span class="tag" style="color:var(--amber)" title="${esc(r.block)}">🛡 block</span>` : ""}</td>
           <td class="dim">${esc(r.upgrade_over || "—")}</td>
+          <td class="r ${r.week_gap > 0 ? "money" : "dim"}" title="${r.week_src === "weekly" ? "weekly projection" : r.week_src === "bye" ? "on bye" : "season-pace estimate"}">${r.week_pts}${r.week_opp ? ` <span class="dim">${esc(r.week_opp)}</span>` : ""} <span class="${r.week_gap > 0 ? "money" : "dim"}">(${r.week_gap > 0 ? "+" : ""}${r.week_gap})</span></td>
           <td class="r ${r.gap_pts > 0 ? "money" : "dim"}">${r.gap_pts > 0 ? "+" + r.gap_pts : r.gap_pts}</td>
           <td class="r ${r.usage && r.usage.trend === "up" ? "money" : "dim"}" title="touches (targets+carries) by week">${r.usage ? esc(r.usage.text) + (r.usage.trend === "up" ? " 📈" : r.usage.trend === "down" ? " 📉" : "") : ""}</td>
           <td class="r dim">${r.trending_adds ? "🔥" + r.trending_adds : ""}</td>
           <td class="r"><b>$${r.faab.low}–$${r.faab.high}</b></td>
-          <td class="r"><button class="btn small" data-add="${esc(r.player.id)}" data-nm="${esc(r.player.name)}" data-bid="${r.faab.high}">claim</button></td>
+          <td class="r">${w.roster_source === "espn" ? "" : `<button class="btn small" data-add="${esc(r.player.id)}" data-nm="${esc(r.player.name)}" data-bid="${r.faab.high}">claim</button>`}</td>
         </tr>`).join("") + `</table>` : `<div class="note">No clear upgrades — check back after refreshing data.</div>`}</div>
     </div>
     <div>
-      <div class="panel">
+      ${w.roster_source === "espn" ? `<div class="panel">
+        <h2>Claims</h2>
+        <div class="note">Rosters and FAAB come straight from ESPN — put your claims in the ESPN app, then
+          <b>Sync now</b> on Data &amp; Setup once they process. Nothing to log here.</div>
+      </div>` : `<div class="panel">
         <h2>Log a transaction</h2>
         <div class="formrow"><label>Add (won claim)</label><input type="text" id="txAdd" placeholder="Search FA…" autocomplete="off"><input type="hidden" id="txAddId"></div>
         <div class="results" id="txAddResults" style="max-height:150px"></div>
@@ -1240,7 +1254,7 @@ async function renderWaivers(gen) {
             `<option value="${esc(p.id)}">${esc(p.name)} (${p.position}, ${p.points} pts)</option>`).join("")}</select></div>
         <div class="formrow"><label>FAAB spent</label><input type="number" id="txFaab" min="0" max="${w.faab_left}" value="0" style="width:90px"></div>
         <div class="formrow"><button class="btn primary" id="txBtn">Log transaction</button></div>
-      </div>
+      </div>`}
       ${w.ir_eligible && w.ir_eligible.length ? `<div class="panel">
         <h2>IR slot</h2>
         ${w.ir_eligible.map(p => `
@@ -1250,9 +1264,9 @@ async function renderWaivers(gen) {
       <div class="panel">
         <h2>Drop candidates (my weakest)</h2>
         ${w.drop_candidates.map(p => `<div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
-          <span class="nm">${esc(p.name)}</span><span class="meta">${p.points} pts</span></div>`).join("") || `<div class="note">—</div>`}
+          <span class="nm">${esc(p.name)}</span><span class="meta" title="this week's projection · season projection">${p.week_pts != null ? `${p.week_pts} this wk · ` : ""}${p.points} pts</span></div>`).join("") || `<div class="note">—</div>`}
       </div>
-      <div class="panel">
+      ${w.roster_source === "espn" ? "" : `<div class="panel">
         <h2>Transaction ledger</h2>
         <div class="table-wrap">${w.transactions.length ? `<table>` + w.transactions.map(tx => `
           <tr><td class="dim">W${tx.week}</td>
@@ -1260,10 +1274,17 @@ async function renderWaivers(gen) {
           <td class="r money">$${tx.faab}</td>
           <td class="r"><button class="btn small danger" data-deltx="${tx.id}">✕</button></td></tr>`).join("") + `</table>`
           : `<div class="note">No transactions yet.</div>`}</div>
-      </div>
+      </div>`}
     </div>
   </div>`;
-  $("#wWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; renderWaivers(); };
+  $("#wWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; S.weekPinned = true; renderWaivers(); };
+  const fw = $("#wFetchWeek");
+  if (fw) fw.onclick = async () => {
+    fw.textContent = "Fetching…";
+    try { await api("/api/week/refresh", { week: w.week }); renderWaivers(); }
+    catch (e) { toast(e.message, true); fw.textContent = `Fetch week ${w.week} projections`; }
+  };
+  if (w.roster_source === "espn") return;  // ESPN is the ledger — nothing below exists to wire
   $$("[data-add]").forEach(b => (b.onclick = () => {
     $("#txAdd").value = b.dataset.nm;
     $("#txAddId").value = b.dataset.add;

@@ -507,9 +507,17 @@ def faab_suggestion(gap_pts, player, faab_left, weeks_left, cfg):
     return {"low": min(lo, faab_left), "high": min(hi, faab_left)}
 
 
-def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, week, cfg, trending=None, limit=20):
-    """Rank free agents by upgrade value over my weakest comparable player."""
+def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, week, cfg,
+                           trending=None, limit=20, wk_proj=None):
+    """Rank free agents by upgrade value over my weakest comparable player.
+
+    Season-long consensus points drive the gap pre-season. Once this week's
+    matchup projections are fetched, ranking leans on the weekly number —
+    in-season the preseason season total is the wrong lens (it's what ESPN's
+    own free-agent list is sorted on, so the two now agree on who matters)."""
     trending = trending or {}
+    wk_proj = wk_proj or {}
+    games = config.GAMES_PER_SEASON
     mine_by_pos = {}
     for p in my_players:
         mine_by_pos.setdefault(p["position"], []).append(p)
@@ -524,17 +532,31 @@ def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, wee
         mine = mine_by_pos.get(p["position"], [])
         worst = mine[-1] if mine else None
         gap = p["points"] - (worst["points"] if worst else p.get("replacement_pts", 0))
+        wpts, wopp, wsrc = weekly_points(p, wk_proj, week)
+        worst_w = (weekly_points(worst, wk_proj, week)[0] if worst
+                   else p.get("replacement_pts", 0) / games)
+        week_gap = round(wpts - worst_w, 1)
+        weekly_mode = wsrc == "weekly"
+        # weekly gap projected to season scale so the trend/usage bonuses keep their weight;
+        # the season gap stays in as a tiebreaker when the weekly numbers are flat
+        base = (0.7 * week_gap * games + 0.3 * gap) if weekly_mode else gap
         trend = trending.get(p["id"], 0)
-        score = gap + min(trend / 25000.0, 8.0)  # trending adds as a tiebreaker/heat signal
-        if gap <= 0 and trend == 0:
+        score = base + min(trend / 25000.0, 8.0)  # trending adds as a tiebreaker/heat signal
+        if gap <= 0 and week_gap <= 0 and trend == 0:
             continue
+        # one week's projection is noisy — when only the weekly gap is positive, bid on half of it
+        faab_gap = gap if gap > 0 else week_gap * games * 0.5
         recs.append({
             "player": p,
             "upgrade_over": worst["name"] if worst else None,
             "gap_pts": round(gap, 1),
+            "week_pts": round(wpts, 1),
+            "week_opp": wopp,
+            "week_gap": week_gap,
+            "week_src": wsrc,
             "trending_adds": trend,
             "score": round(score, 2),
-            "faab": faab_suggestion(gap, p, faab_left, weeks_left, cfg),
+            "faab": faab_suggestion(faab_gap, p, faab_left, weeks_left, cfg),
         })
     recs.sort(key=lambda r: r["score"], reverse=True)
     return recs[:limit]
