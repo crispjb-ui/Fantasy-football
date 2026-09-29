@@ -22,6 +22,24 @@ ESPN_URL = ("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{se
 # ESPN defaultPositionId -> position
 POSITION_MAP = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DST"}
 
+# ESPN injuryStatus -> the labels the rest of the app uses. ESPN's tag is what
+# gates its IR slot, so it is stored per roster entry alongside Sleeper's
+# news-driven status on the player.
+INJURY_MAP = {"OUT": "Out", "INJURY_RESERVE": "IR", "QUESTIONABLE": "Questionable",
+              "DOUBTFUL": "Doubtful", "SUSPENSION": "Suspended", "PUP": "PUP",
+              "PHYSICALLY_UNABLE_TO_PERFORM": "PUP", "ACTIVE": "Active"}
+IR_LINEUP_SLOT = 21
+
+
+def _entry_injury(entry):
+    if entry.get("lineupSlotId") == IR_LINEUP_SLOT:
+        return "IR"
+    player = (entry.get("playerPoolEntry") or {}).get("player") or entry.get("player") or {}
+    raw = player.get("injuryStatus")
+    if raw is None:
+        return None
+    return INJURY_MAP.get(str(raw).upper(), str(raw).title())
+
 
 def get_settings():
     return db.meta_get("espn", {"league_id": "", "espn_s2": "", "swid": "",
@@ -137,7 +155,7 @@ def apply_league_payload(data):
         for e in entries:
             pid = _match_entry(e, by_espn, by_name, dst_by_nick)
             if pid:
-                roster_rows.append((local_id, pid))
+                roster_rows.append((local_id, pid, _entry_injury(e)))
                 matched += 1
             else:
                 pl = (e.get("playerPoolEntry") or {}).get("player") or {}

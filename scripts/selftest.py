@@ -926,6 +926,49 @@ if _my_rb and _fa_rb:
     check("...and my out starter is not a drop candidate",
           all(p["id"] != _my_rb["id"] for p in r["drop_candidates"]))
 
+# --- ESPN's injury designation gates the IR slot ---------------------------------------------
+# Sleeper (news) can say Out while ESPN still shows Q; only ESPN's tag opens ESPN's IR slot.
+_t1 = espn_teams[0]["roster"]["entries"]
+
+
+def _pid_by_name(name):
+    from app.data_sources import norm_name as _nn
+    target = _nn(name)
+    for pl in _db.all_players():
+        if _nn(pl["name"]) == target:
+            return pl["id"]
+    return None
+
+
+# the sample purge above dropped unreferenced fixture players — use two that still exist
+_live = [e for e in _t1 if _pid_by_name(e["playerPoolEntry"]["player"]["fullName"])][:2]
+check("fixture still has two matchable players on my ESPN team", len(_live) == 2, str(len(_live)))
+_live[0]["playerPoolEntry"]["player"]["injuryStatus"] = "QUESTIONABLE"
+_live[1]["playerPoolEntry"]["player"]["injuryStatus"] = "OUT"
+_espn.apply_league_payload({"teams": espn_teams})
+_rows = {rr["player_id"]: rr.get("injury") for rr in _db.rosters()}
+_q_id = _pid_by_name(_live[0]["playerPoolEntry"]["player"]["fullName"])
+_o_id = _pid_by_name(_live[1]["playerPoolEntry"]["player"]["fullName"])
+check("espn sync stores ESPN's injury designation per roster entry",
+      _rows.get(_q_id) == "Questionable" and _rows.get(_o_id) == "Out", f"q={_rows.get(_q_id)} o={_rows.get(_o_id)}")
+_c = _db.connect()
+_c.execute("UPDATE players SET injury='Out' WHERE id IN (?,?)", (_q_id, _o_id))  # the news says both are out
+_c.commit()
+r, s = call("GET", "/api/waivers?week=8")
+check("ESPN 'Out' player is IR-eligible", any(p["id"] == _o_id for p in r["ir_eligible"]), str([p["name"] for p in r["ir_eligible"]]))
+check("ESPN 'Questionable' player is pending, not IR-eligible",
+      any(p["id"] == _q_id and p["espn_status"] == "Questionable" for p in r["ir_pending"])
+      and all(p["id"] != _q_id for p in r["ir_eligible"]), str(r["ir_pending"])[:160])
+check("neither hurt player is a drop candidate", all(p["id"] not in (_q_id, _o_id) for p in r["drop_candidates"]))
+check("rival FAAB reflects ESPN's ledger", r["rival_faab"] and min(r["rival_faab"].values()) == 200 - 30, str(r["rival_faab"]))
+# ESPN says Active but the news says Out -> not IR-eligible, and not silently healthy either
+_live[1]["playerPoolEntry"]["player"]["injuryStatus"] = "ACTIVE"
+_espn.apply_league_payload({"teams": espn_teams})
+r, s = call("GET", "/api/waivers?week=8")
+check("ESPN 'Active' overrides Sleeper 'Out' for IR eligibility",
+      all(p["id"] != _o_id for p in r["ir_eligible"]) and any(p["id"] == _o_id and p["espn_status"] == "Active" for p in r["ir_pending"]),
+      str([(p["name"], p.get("espn_status")) for p in r["ir_pending"]])[:160])
+
 srv.shutdown()
 print()
 if failures:

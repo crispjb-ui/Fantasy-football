@@ -1246,6 +1246,13 @@ async function renderWaivers(gen) {
         <h2>Claims</h2>
         <div class="note">Rosters and FAAB come straight from ESPN — put your claims in the ESPN app, then
           <b>Sync now</b> on Data &amp; Setup once they process. Nothing to log here.</div>
+      </div>
+      <div class="panel">
+        <h2>League FAAB remaining</h2>
+        <div class="note" style="margin-bottom:6px">From ESPN's ledger at the last sync — compare with ESPN's <i>Trade &amp; Acquisition Limits</i> page if a number looks off.</div>
+        <div class="result-row"><span class="nm"><b>You</b></span><span class="meta money">$${w.faab_left}</span></div>
+        ${Object.entries(w.rival_faab || {}).map(([name, left]) =>
+          `<div class="result-row"><span class="nm">${esc(name)}</span><span class="meta ${left >= w.faab_left ? "money" : "dim"}">$${left}</span></div>`).join("")}
       </div>` : `<div class="panel">
         <h2>Log a transaction</h2>
         <div class="formrow"><label>Add (won claim)</label><input type="text" id="txAdd" placeholder="Search FA…" autocomplete="off"><input type="hidden" id="txAddId"></div>
@@ -1256,11 +1263,14 @@ async function renderWaivers(gen) {
         <div class="formrow"><label>FAAB spent</label><input type="number" id="txFaab" min="0" max="${w.faab_left}" value="0" style="width:90px"></div>
         <div class="formrow"><button class="btn primary" id="txBtn">Log transaction</button></div>
       </div>`}
-      ${w.ir_eligible && w.ir_eligible.length ? `<div class="panel">
+      ${(w.ir_eligible && w.ir_eligible.length) || (w.ir_pending && w.ir_pending.length) ? `<div class="panel">
         <h2>IR slot</h2>
-        ${w.ir_eligible.map(p => `
+        ${(w.ir_eligible || []).map(p => `
           <div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
             <span class="nm">${esc(p.name)} <span class="meta">${esc(p.injury)} — move to your IR slot to open a roster spot instead of dropping</span></span></div>`).join("")}
+        ${(w.ir_pending || []).map(p => `
+          <div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
+            <span class="nm">${esc(p.name)} <span class="meta">${esc(p.injury)} per the news, but ESPN still lists him <b>${esc(p.espn_status)}</b> — the IR slot opens only once ESPN tags him O/IR (usually after Friday's report). Not a drop candidate.</span></span></div>`).join("")}
       </div>` : ""}
       <div class="panel">
         <h2>Drop candidates (my weakest)</h2>

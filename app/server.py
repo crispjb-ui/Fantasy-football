@@ -1042,9 +1042,25 @@ def api_waivers(q, body):
         this_wk = wpts if src == "weekly" else p["points"] / games
         return (this_wk - p.get("replacement_pts", 0) / games, p["points"] - p.get("replacement_pts", 0))
 
-    ir_eligible = [p for p in my_players if (p.get("injury") or "") in ("IR", "Out", "PUP")]
+    # IR: ESPN's own designation gates its IR slot, so when ESPN is live it decides
+    # eligibility. Sleeper's news-driven status can say Out while ESPN still shows Q —
+    # those players are hurt but not IR-eligible yet, and must not be drop candidates.
+    espn_live = _espn_rosters_active()
+    espn_inj = {r["player_id"]: r.get("injury") for r in db.rosters()} if espn_live else {}
+
+    def _ir_ok(p):
+        # ESPN's explicit tag wins ('Active' included); with no ESPN tag on file,
+        # fall back to Sleeper's status rather than assume healthy.
+        status = espn_inj.get(p["id"]) if espn_live else None
+        if status is None:
+            status = p.get("injury")
+        return (status or "") in ("IR", "Out", "PUP")
+
+    ir_eligible = [p for p in my_players if _ir_ok(p)]
+    ir_pending = [p for p in my_players if espn_live and not _ir_ok(p)
+                  and (p.get("injury") or "") in recommendations.OUT_STATUSES]
     my_sorted = sorted(my_players, key=lambda p: p["points"], reverse=True)
-    ir_ids = {p["id"] for p in ir_eligible}
+    ir_ids = {p["id"] for p in ir_eligible} | {p["id"] for p in ir_pending}
     healthy = [p for p in my_players if p["id"] not in ir_ids]
     pos_count = {}
     for p in healthy:
@@ -1069,7 +1085,10 @@ def api_waivers(q, body):
         ],
         "my_roster": [_slim(p) for p in my_sorted],
         "drop_candidates": drop_candidates,
-        "ir_eligible": [{**_slim(p), "injury": p.get("injury")} for p in ir_eligible],
+        "ir_eligible": [{**_slim(p), "injury": (espn_inj.get(p["id"]) if espn_live else None) or p.get("injury")}
+                        for p in ir_eligible],
+        "ir_pending": [{**_slim(p), "injury": p.get("injury"), "espn_status": espn_inj.get(p["id"]) or "Active"}
+                       for p in ir_pending],
         "trending_drops": trending.get("drops", {}),
         "transactions": [
             {**tx,

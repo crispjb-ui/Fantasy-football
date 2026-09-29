@@ -129,6 +129,13 @@ def connect() -> sqlite3.Connection:
             except sqlite3.OperationalError:
                 pass
         try:
+            # ESPN's own injury designation per rostered player — the one that
+            # gates ESPN's IR slot (Sleeper's news-driven status may say Out
+            # while ESPN still shows Q).
+            conn.execute("ALTER TABLE rosters ADD COLUMN injury TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
             # Per-team starting auction budget (league trades draft dollars);
             # NULL falls back to the league default.
             conn.execute("ALTER TABLE teams ADD COLUMN budget INTEGER")
@@ -430,10 +437,13 @@ def usage_all(limit_weeks=4):
 # --- live rosters (ESPN sync) & weekly projections ------------------------------
 
 def replace_rosters(rows):
-    """rows: [(team_id, player_id)] — full replacement from a league sync."""
+    """rows: [(team_id, player_id[, espn_injury])] — full replacement from a league sync."""
     conn = connect()
     conn.execute("DELETE FROM rosters")
-    conn.executemany("INSERT OR IGNORE INTO rosters (team_id, player_id) VALUES (?,?)", rows)
+    conn.executemany(
+        "INSERT OR IGNORE INTO rosters (team_id, player_id, injury) VALUES (?,?,?)",
+        [(r[0], r[1], r[2] if len(r) > 2 else None) for r in rows],
+    )
     conn.commit()
 
 
