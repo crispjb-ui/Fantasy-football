@@ -1,5 +1,7 @@
 """Draft-room and waiver-wire recommendation logic."""
 
+import math
+
 from . import config
 
 
@@ -485,11 +487,13 @@ def stream_candidates(available, cfg, week, wk_proj, positions=("DST", "K"), lim
 
 # --- waivers -----------------------------------------------------------------
 
-def faab_suggestion(gap_pts, player, faab_left, weeks_left, cfg):
+def faab_suggestion(gap_pts, player, faab_left, weeks_left, cfg, trend=0):
     """Suggested FAAB bid (out of the $200 season budget).
 
     Scales with the weekly value gap over my current roster, urgency
     (fewer weeks left -> spend more freely) and the player's absolute level.
+    League-wide add heat (Sleeper trending) floors the bid: when a million
+    managers are adding someone, the room will pay regardless of my gap.
     """
     weekly_gap = gap_pts / max(1, config.GAMES_PER_SEASON)
     season_frac = min(1.0, max(0.15, (18 - weeks_left) / 17 + 0.15))
@@ -503,8 +507,22 @@ def faab_suggestion(gap_pts, player, faab_left, weeks_left, cfg):
         lo, hi = int(faab_left * 0.12), int(faab_left * 0.30)
     else:  # league-winner territory
         lo, hi = int(faab_left * 0.30), int(faab_left * (0.45 + 0.3 * season_frac))
+    if trend >= 1_000_000:
+        lo, hi = max(lo, int(faab_left * 0.12)), max(hi, int(faab_left * 0.30))
+    elif trend >= 250_000:
+        lo, hi = max(lo, int(faab_left * 0.05)), max(hi, int(faab_left * 0.15))
+    elif trend >= 50_000:
+        hi = max(hi, int(faab_left * 0.08))
     hi = max(hi, lo)
     return {"low": min(lo, faab_left), "high": min(hi, faab_left)}
+
+
+def trend_heat(trend):
+    """Trending adds -> ranking bonus on the season-points scale. Log so a
+    2M-add player outranks a 500K one instead of both hitting the same cap."""
+    if not trend or trend <= 0:
+        return 0.0
+    return min(10.0, 3.0 * math.log10(1.0 + trend / 1000.0))
 
 
 def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, week, cfg,
@@ -537,11 +555,13 @@ def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, wee
                    else p.get("replacement_pts", 0) / games)
         week_gap = round(wpts - worst_w, 1)
         weekly_mode = wsrc == "weekly"
-        # weekly gap projected to season scale so the trend/usage bonuses keep their weight;
-        # the season gap stays in as a tiebreaker when the weekly numbers are flat
-        base = (0.7 * week_gap * games + 0.3 * gap) if weekly_mode else gap
+        # Weekly gap projected to season scale so the trend/usage bonuses keep their
+        # weight. The season gap still counts (a real rest-of-season edge matters),
+        # but a stale preseason number can't drag a live upgrade down by more than
+        # 10 — it ranked Hall's replacement 7th the week Hall went down.
+        base = (0.7 * week_gap * games + 0.3 * max(gap, -10.0)) if weekly_mode else gap
         trend = trending.get(p["id"], 0)
-        score = base + min(trend / 25000.0, 8.0)  # trending adds as a tiebreaker/heat signal
+        score = base + trend_heat(trend)
         if gap <= 0 and week_gap <= 0 and trend == 0:
             continue
         # one week's projection is noisy — when only the weekly gap is positive, bid on half of it
@@ -556,7 +576,7 @@ def waiver_recommendations(valued_pool, my_players, rostered_ids, faab_left, wee
             "week_src": wsrc,
             "trending_adds": trend,
             "score": round(score, 2),
-            "faab": faab_suggestion(faab_gap, p, faab_left, weeks_left, cfg),
+            "faab": faab_suggestion(faab_gap, p, faab_left, weeks_left, cfg, trend=trend),
         })
     recs.sort(key=lambda r: r["score"], reverse=True)
     return recs[:limit]

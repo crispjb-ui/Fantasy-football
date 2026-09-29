@@ -1014,6 +1014,16 @@ def api_waivers(q, body):
         if (pl["position"] == "RB" and mine_rb and
                 pl["points"] < mine_rb["points"]):
             r["handcuff_for"] = mine_rb["name"]
+            # ...and if that starter is out, this is his replacement, not a stash:
+            # rank him with the starters and bid like the room will.
+            if (mine_rb.get("injury") or "") in recommendations.OUT_STATUSES:
+                r["fills_in_for"] = mine_rb["name"]
+                r["score"] = round(r["score"] + 10, 2)
+                lo = max(r["faab"]["low"], int(faab_left * 0.10))
+                hi = max(r["faab"]["high"], int(faab_left * 0.25))
+                if top_rival is not None:
+                    hi = min(hi, top_rival + 1)
+                r["faab"] = {"low": min(lo, faab_left), "high": min(max(hi, lo), faab_left)}
         # Block bid: my top rival would start this guy.
         if rival_id and pl["position"] in rival_weak and \
                 pl["points"] > rival_weak[pl["position"]] + 12:
@@ -1022,20 +1032,30 @@ def api_waivers(q, body):
 
     # IR-eligible stashes: don't drop them, move them to IR for a free spot.
     # Drop candidates: in-season, this week's projection is the honest measure of who is
-    # expendable — the preseason season total ranked a PRK-2 receiver coming off an ACL
-    # as the weakest man on the roster. Bye weeks fall back to season pace.
+    # expendable — but relative to the position's replacement level, since a 7-point TE
+    # is not more droppable than a 9-point kicker. Bye weeks fall back to season pace.
+    # Never nominate someone whose drop leaves a required starting slot unfillable.
+    games = config.GAMES_PER_SEASON
+
     def _drop_key(p):
         wpts, _, src = recommendations.weekly_points(p, wk_proj, week)
-        this_wk = wpts if src == "weekly" else p["points"] / config.GAMES_PER_SEASON
-        return (this_wk, p["points"] - p.get("replacement_pts", 0))
+        this_wk = wpts if src == "weekly" else p["points"] / games
+        return (this_wk - p.get("replacement_pts", 0) / games, p["points"] - p.get("replacement_pts", 0))
 
     ir_eligible = [p for p in my_players if (p.get("injury") or "") in ("IR", "Out", "PUP")]
     my_sorted = sorted(my_players, key=lambda p: p["points"], reverse=True)
     ir_ids = {p["id"] for p in ir_eligible}
+    healthy = [p for p in my_players if p["id"] not in ir_ids]
+    pos_count = {}
+    for p in healthy:
+        pos_count[p["position"]] = pos_count.get(p["position"], 0) + 1
+    droppable = [p for p in healthy
+                 if pos_count.get(p["position"], 0) > cfg["starters"].get(p["position"], 0)]
     drop_candidates = [
-        {**_slim(p), "week_pts": round(_drop_key(p)[0], 1)} for p in sorted(
-            (p for p in my_players if p["id"] not in ir_ids), key=_drop_key,
-        )[:6]
+        {**_slim(p), "week_pts": round(
+            recommendations.weekly_points(p, wk_proj, week)[0]
+            if recommendations.weekly_points(p, wk_proj, week)[2] == "weekly" else p["points"] / games, 1)}
+        for p in sorted(droppable, key=_drop_key)[:6]
     ]
     return {
         "faab_left": faab_left,

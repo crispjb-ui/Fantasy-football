@@ -1229,6 +1229,7 @@ async function renderWaivers(gen) {
           <td><span class="pos pos-${r.player.position}">${r.player.position}</span> ${esc(r.player.name)} <span class="dim">${esc(r.player.team || "")}</span>${
             r.playoff_sos === "easy" ? ' <span class="tag" style="color:var(--green)" title="easy playoff schedule (wks 15-17)">SOS+</span>' :
             r.playoff_sos === "tough" ? ' <span class="tag" style="color:var(--red)" title="tough playoff schedule (wks 15-17)">SOS−</span>' : ""}${
+            r.fills_in_for ? ` <span class="tag" style="color:var(--green)" title="your starter is out — this is his replacement">🩹 fills in for ${esc(r.fills_in_for)}</span>` :
             r.handcuff_for ? ` <span class="tag" style="color:var(--purple)" title="backs up your starter">🔗 ${esc(r.handcuff_for)}</span>` : ""}${
             r.block ? ` <span class="tag" style="color:var(--amber)" title="${esc(r.block)}">🛡 block</span>` : ""}</td>
           <td class="dim">${esc(r.upgrade_over || "—")}</td>

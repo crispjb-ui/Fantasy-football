@@ -877,6 +877,55 @@ check("state exposes the synced week for the UI default", (r.get("nfl_state") or
 _espn.apply_league_payload({"teams": espn_teams})  # no status -> week untouched
 check("espn sync without status leaves the week alone", (_db.meta_get("nfl_state") or {}).get("week") == 5)
 
+# --- waiver scoring: stale season totals can't bury a weekly upgrade; heat floors bids ------
+from app import recommendations as _rec  # noqa: E402
+_cfg = _db.get_config()
+_mine = [{"id": "m1", "name": "Mine", "position": "RB", "points": 100, "replacement_pts": 60, "team": "AAA"}]
+_fa_a = {"id": "fa-a", "name": "Backup Turned Starter", "position": "RB", "points": 40, "replacement_pts": 60, "team": "BBB"}
+_fa_b = {"id": "fa-b", "name": "Steady Vet", "position": "RB", "points": 110, "replacement_pts": 60, "team": "CCC"}
+_wk = {"m1": {"points": 10.0, "opp": "X"}, "fa-a": {"points": 12.0, "opp": "Y"}, "fa-b": {"points": 10.5, "opp": "Z"}}
+_recs = _rec.waiver_recommendations(_mine + [_fa_a, _fa_b], _mine, {"m1"}, 188, 8, _cfg, wk_proj=_wk)
+check("weekly upgrade outranks a stale-season-total player",
+      [x["player"]["id"] for x in _recs][:2] == ["fa-a", "fa-b"], str([(x["player"]["id"], x["score"]) for x in _recs]))
+_hot = _rec.faab_suggestion(-50, _fa_a, 188, 14, _cfg, trend=2_000_000)
+check("million-add heat floors the bid (12%-30%)", _hot["low"] >= 22 and _hot["high"] >= 56, str(_hot))
+_cold = _rec.faab_suggestion(-50, _fa_a, 188, 14, _cfg, trend=0)
+check("no heat, no gap -> token bid", _cold["high"] <= 2, str(_cold))
+check("trend heat is monotonic and capped", _rec.trend_heat(500_000) < _rec.trend_heat(2_000_000) <= 10.0)
+
+# Drop candidates: position-relative, and never the only man at a required slot.
+r, s = call("GET", "/api/waivers?week=8")
+_pos_n = {}
+for p in r["my_roster"]:
+    _pos_n[p["position"]] = _pos_n.get(p["position"], 0) + 1
+check("drop candidates never strand a required starting slot",
+      all(_pos_n.get(p["position"], 0) > _cfg["starters"].get(p["position"], 0) for p in r["drop_candidates"]),
+      str([(p["name"], p["position"], _pos_n.get(p["position"])) for p in r["drop_candidates"]]))
+
+# Handcuff of MY out starter: ranked up, bid floored, tagged.
+_my_rb = next((p for p in r["my_roster"] if p["position"] == "RB"), None)
+_fa_rb = next((x["player"] for x in r["recommendations"] if x["player"]["position"] == "RB"), None)
+check("fixture has an RB on my roster and an RB free agent", _my_rb is not None and _fa_rb is not None)
+if _my_rb and _fa_rb:
+    _c = _db.connect()
+    _c.execute("UPDATE players SET team='ZZZ', injury='Out', points=999 WHERE id=?", (_my_rb["id"],))
+    _c.execute("UPDATE players SET team='ZZZ' WHERE id=?", (_fa_rb["id"],))
+    _c.commit()
+    # This fixture roster has no K/QB, so every free-agent K/QB floods the top 20 with a
+    # gap-over-nobody; give the replacement a real weekly line so the boost is what we test.
+    _rows = [{"player_id": pid, **v} for pid, v in _db.week_proj(8).items() if pid != _fa_rb["id"]]
+    _rows.append({"player_id": _fa_rb["id"], "points": 38.0, "opp": "ZZZ"})
+    _db.set_week_proj(8, _rows)
+    r, s = call("GET", "/api/waivers?week=8")
+    _rr = next((x for x in r["recommendations"] if x["player"]["id"] == _fa_rb["id"]), None)
+    _dbg = (f"fa={_fa_rb['id']} mine={_my_rb['id']} top={[x['player']['id'] for x in r['recommendations']][:8]} "
+            f"faab_left={r['faab_left']} rr={_rr and {k: _rr.get(k) for k in ('fills_in_for', 'handcuff_for', 'faab', 'score')}}")
+    check("replacement for my out starter is tagged", _rr is not None and _rr.get("fills_in_for") == _my_rb["name"], _dbg)
+    check("...and bid is floored at 10% of my FAAB",
+          _rr is not None and _rr["faab"]["low"] >= int(r["faab_left"] * 0.10), _dbg)
+    check("...and my out starter is not a drop candidate",
+          all(p["id"] != _my_rb["id"] for p in r["drop_candidates"]))
+
 srv.shutdown()
 print()
 if failures:
