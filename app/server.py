@@ -119,6 +119,7 @@ def api_state(q, body):
         "briefing_unseen": len([i for i in db.meta_get("briefing", [])
                                 if i["ts"] > db.meta_get("briefing_seen", 0)]),
         "consensus_sources": db.proj_source_names(),
+        "espn": espn.public_settings(),
     }
 
 
@@ -299,11 +300,41 @@ def api_refresh(q, body):
     return {"ok": ok_any, "results": results, "new_alerts": len(new_alerts)}
 
 
+def _remap_sample_rosters():
+    """ESPN rosters synced before the first Sleeper refresh were matched
+    against the bundled sample pool, so their rows point at smpl:* ids.
+    Re-point each at the real player with the same name+position before
+    the sample rows are purged — otherwise the rosters reference deleted
+    players, my team reads as empty and everyone shows up as a free agent."""
+    rows = db.rosters()
+    if not any(r["player_id"].startswith("smpl:") for r in rows):
+        return 0
+    conn = db.connect()
+    real = {}
+    for p in conn.execute("SELECT id, name, position FROM players "
+                          "WHERE id NOT LIKE 'smpl:%'").fetchall():
+        real.setdefault((data_sources.norm_name(p["name"]), p["position"]), p["id"])
+    sample = {p["id"]: (data_sources.norm_name(p["name"]), p["position"])
+              for p in conn.execute("SELECT id, name, position FROM players "
+                                    "WHERE id LIKE 'smpl:%'").fetchall()}
+    remapped, out = 0, []
+    for r in rows:
+        pid = r["player_id"]
+        if pid in sample and sample[pid] in real:
+            pid = real[sample[pid]]
+            remapped += 1
+        out.append((r["team_id"], pid))
+    if remapped:
+        db.replace_rosters(out)
+    return remapped
+
+
 def _purge_sample_players():
+    _remap_sample_rosters()
     conn = db.connect()
     referenced = {p["player_id"] for p in db.picks()} | {
         x for tx in db.transactions() for x in (tx["add_id"], tx["drop_id"]) if x
-    }
+    } | {r["player_id"] for r in db.rosters()}
     rows = conn.execute("SELECT id FROM players WHERE id LIKE 'smpl:%'").fetchall()
     for r in rows:
         if r["id"] not in referenced:

@@ -9,6 +9,7 @@ fetch (thin, network) and apply (pure, fixture-testable) are separated.
 """
 
 import json
+import time
 import urllib.request
 
 from . import db
@@ -28,12 +29,27 @@ def get_settings():
 
 
 def save_settings(**kw):
+    """Merge non-empty values into the saved settings. Blank strings are
+    treated like None (keep what's saved) — the setup panel re-renders with
+    empty inputs, so a re-sync must not wipe the league id or cookies."""
     cur = get_settings()
     for k in ("league_id", "espn_s2", "swid", "my_espn_team_id", "enabled"):
-        if k in kw and kw[k] is not None:
+        if k in kw and kw[k] is not None and kw[k] != "":
             cur[k] = kw[k]
     db.meta_set("espn", cur)
     return cur
+
+
+def public_settings():
+    """What the UI may see: never the cookie values themselves."""
+    s = get_settings()
+    return {
+        "league_id": s.get("league_id") or "",
+        "my_espn_team_id": s.get("my_espn_team_id"),
+        "has_cookies": bool(s.get("espn_s2") and s.get("swid")),
+        "teams": db.meta_get("espn_teams", []),
+        "last_sync": db.meta_get("espn_last_sync"),
+    }
 
 
 def fetch_league(season):
@@ -132,6 +148,12 @@ def apply_league_payload(data):
     db.replace_rosters(roster_rows)
     db.meta_set("espn_faab_spent", faab_spent)
     db.meta_set("roster_source", "espn")
+    # remembered so the setup panel can repopulate the team picker and show
+    # the last result after a page change
+    db.meta_set("espn_teams", team_list)
+    db.meta_set("espn_last_sync", {"ts": time.time(), "teams": len(team_list),
+                                   "rostered": len(roster_rows),
+                                   "unmatched": unmatched[:10]})
 
     # W-L records (playoff-odds inputs)
     records = {}

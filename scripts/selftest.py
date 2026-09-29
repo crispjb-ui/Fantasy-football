@@ -820,6 +820,35 @@ check("copilot guard: blocks non-need pick in the endgame",
 r, s = call("POST", "/api/pick", {"player_id": _kk["id"], "team_id": 10, "price": 1})
 check("copilot guard: need-filling pick allowed", s == 200 and r.get("ok") is True, str(r))
 
+# --- ESPN setup persistence + sample-purge roster remap --------------------------------
+# The setup panel re-renders with blank inputs; a re-sync from it must not wipe settings.
+_espn.save_settings(league_id="424242", espn_s2="cookie-a", swid="{SWID-A}")
+_espn.save_settings(league_id="", espn_s2=None, swid="")
+_es = _espn.get_settings()
+check("espn: blank re-save keeps league id + cookies",
+      _es["league_id"] == "424242" and _es["espn_s2"] == "cookie-a" and _es["swid"] == "{SWID-A}", str(_es))
+r, s = call("GET", "/api/state")
+_pub = r.get("espn") or {}
+check("espn: state exposes league id, team list and cookie presence — never the cookies",
+      _pub.get("league_id") == "424242" and _pub.get("has_cookies") is True
+      and isinstance(_pub.get("teams"), list) and "cookie-a" not in json.dumps(_pub), str(_pub)[:200])
+# Rosters synced against the bundled sample pool must survive the Sleeper purge.
+_conn = _db.connect()
+_conn.execute("INSERT OR REPLACE INTO players (id, name, position, points, source) VALUES (?,?,?,?,?)",
+              ("smpl:remap-test", "Remap Test", "WR", 50.0, "sample"))
+_conn.execute("INSERT OR REPLACE INTO players (id, name, position, points, source) VALUES (?,?,?,?,?)",
+              ("999999", "Remap Test", "WR", 55.0, "sleeper"))
+_conn.commit()
+_before = [(rr["team_id"], rr["player_id"]) for rr in _db.rosters()]
+_db.replace_rosters(_before + [(1, "smpl:remap-test")])
+server._purge_sample_players()
+_after = {(rr["team_id"], rr["player_id"]) for rr in _db.rosters()}
+check("purge remaps sample-matched roster rows to the real player",
+      (1, "999999") in _after and (1, "smpl:remap-test") not in _after, str(sorted(_after))[:200])
+check("purge keeps the other roster rows intact", set(_before) <= _after, f"{len(_before)} -> {len(_after)}")
+check("remapped sample row is gone from the pool",
+      _conn.execute("SELECT COUNT(*) FROM players WHERE id='smpl:remap-test'").fetchone()[0] == 0)
+
 srv.shutdown()
 print()
 if failures:

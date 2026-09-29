@@ -1314,6 +1314,7 @@ async function renderData(gen) {
   if (stale(gen)) return;
   const a = S.app;
   const lr = a.last_refresh || {};
+  const E = a.espn || {};
   $("#view").innerHTML = `
   <div class="panel" style="${cl.ready ? "border-color:var(--green)" : "border-color:var(--amber)"}">
     <h2>Draft-day readiness ${cl.ready ? '<span class="hint" style="color:var(--green)">READY</span>' : '<span class="hint" style="color:var(--amber)">NOT READY</span>'}</h2>
@@ -1344,12 +1345,21 @@ async function renderData(gen) {
           everyone's FAAB stay live all season — no manual bookkeeping. For private leagues grab the
           <span class="kbd">espn_s2</span> and <span class="kbd">SWID</span> cookies from espn.com
           (browser dev tools → Application → Cookies while logged in).</div>
-        <div class="formrow"><label>League ID</label><input type="text" id="eLeague" placeholder="e.g. 123456" style="width:140px"></div>
-        <div class="formrow"><label>espn_s2</label><input type="password" id="eS2" placeholder="long cookie value (hidden once entered)" style="flex:1" autocomplete="off"></div>
-        <div class="formrow"><label>SWID</label><input type="password" id="eSwid" placeholder="{XXXXXXXX-...}" style="flex:1" autocomplete="off"></div>
-        <div class="formrow"><label>My ESPN team</label><select id="eMyTeam"><option value="">— sync once to list teams —</option></select>
+        <div class="formrow"><label>League ID</label><input type="text" id="eLeague" placeholder="e.g. 123456" style="width:140px" value="${esc(E.league_id || "")}"></div>
+        <div class="formrow"><label>espn_s2</label><input type="password" id="eS2" placeholder="${E.has_cookies ? "saved ✓ — leave blank to keep" : "long cookie value (hidden once entered)"}" style="flex:1" autocomplete="off"></div>
+        <div class="formrow"><label>SWID</label><input type="password" id="eSwid" placeholder="${E.has_cookies ? "saved ✓ — leave blank to keep" : "{XXXXXXXX-...}"}" style="flex:1" autocomplete="off"></div>
+        <div class="formrow"><label>My ESPN team</label><select id="eMyTeam">${
+          (E.teams || []).length
+            ? E.teams.map(t => `<option value="${t.espn_id}" ${String(t.espn_id) === String(E.my_espn_team_id) ? "selected" : ""}>${esc(t.name)} (${t.players} players)</option>`).join("")
+            : `<option value="">— sync once to list teams —</option>`
+        }</select>
           <button class="btn primary" id="eSync">Sync now</button></div>
-        <div class="note" id="eStatus"></div>
+        <div class="note" id="eStatus">${
+          E.last_sync
+            ? `Last sync: ${E.last_sync.teams} teams, ${E.last_sync.rostered} rostered players` +
+              (E.last_sync.unmatched && E.last_sync.unmatched.length ? ` — ⚠️ unmatched: ${E.last_sync.unmatched.map(esc).join(", ")}` : "")
+            : ""
+        }</div>
       </div>
       <div class="panel">
         <h2>League Draft Room sync</h2>
@@ -1626,7 +1636,7 @@ async function renderData(gen) {
     $("#eStatus").textContent = "Syncing… (needs internet on this machine)";
     try {
       await api("/api/espn/config", {
-        league_id: $("#eLeague").value.trim(),
+        league_id: $("#eLeague").value.trim() || null,
         espn_s2: $("#eS2").value.trim() || null,
         swid: $("#eSwid").value.trim() || null,
         my_espn_team_id: $("#eMyTeam").value || null,
