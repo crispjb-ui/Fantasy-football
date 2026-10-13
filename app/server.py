@@ -788,6 +788,12 @@ def api_stream(q, body):
     for p in my_players:
         if p.get("bye") == week:
             bye_needs.setdefault(p["position"], []).append(p["name"])
+    # the streaming question is usually about NEXT week — surface where the byes are
+    upcoming = {}
+    for p in my_players:
+        b = p.get("bye")
+        if b and week < b <= week + 3:
+            upcoming.setdefault(str(b), []).append(p["name"])
     if pos not in STREAM_ORDER:
         pos = next((x for x in STREAM_ORDER if x in bye_needs), "DST")
 
@@ -816,6 +822,7 @@ def api_stream(q, body):
         "week": week, "pos": pos,
         "has_weekly_data": bool(wk_proj), "has_vegas": bool(vegas), "has_recent": bool(recent),
         "bye_needs": bye_needs, "on_bye": bye_needs.get(pos, []),
+        "upcoming_byes": dict(sorted(upcoming.items(), key=lambda kv: int(kv[0]))),
         "mine": mine, "candidates": cands[:12],
     }
 

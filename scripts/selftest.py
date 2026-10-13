@@ -933,6 +933,12 @@ if _my_rb2:
     check("my bye player is flagged in 'mine'", any(m["id"] == _my_rb2["id"] and m["on_bye"] for m in r["mine"]))
 r, s = call("GET", "/api/lineup?week=9")
 check("lineup: no free-agent 'beats your starter' claims without weekly data", s == 200 and r["fa_upgrades"] == [] and not r["has_weekly_data"])
+# upcoming byes are surfaced so the panel can jump to next week's hole
+if _my_rb2:
+    r, s = call("GET", "/api/stream?week=7")
+    check("stream lists upcoming byes within three weeks", "8" in r["upcoming_byes"] and _my_rb2["name"] in r["upcoming_byes"]["8"], str(r["upcoming_byes"]))
+    r, s = call("GET", "/api/stream?week=8")
+    check("stream does not list the current week as upcoming", "8" not in r["upcoming_byes"], str(r["upcoming_byes"]))
 
 # Drop candidates: position-relative, and never the only man at a required slot.
 r, s = call("GET", "/api/waivers?week=8")

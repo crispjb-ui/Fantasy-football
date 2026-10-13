@@ -1004,9 +1004,10 @@ function wRow(p, slot) {
 /* Streaming panel on the Lineup tab: best available at one position for the
    week — matchup projection, Vegas implied total, last-3 actuals, season pace,
    add heat. Defaults to whichever position I have on bye that week. */
-async function renderStream(week) {
+async function renderStream(lineupWeek) {
   const box = $("#streamPanel");
   if (!box) return;
+  const week = S.streamWeek || lineupWeek;
   let r;
   try { r = await api(`/api/stream?week=${week}&pos=${encodeURIComponent(S.streamPos || "")}`); }
   catch (e) { box.innerHTML = `<h2>Streaming</h2><div class="note">❌ ${esc(e.message)}</div>`; return; }
@@ -1031,19 +1032,42 @@ async function renderStream(week) {
       <td class="r dim">${c.season_avg}</td>
       <td class="r dim">${c.trending_adds ? "🔥" + c.trending_adds : ""}</td>
     </tr>`;
+  const upcoming = Object.entries(r.upcoming_byes || {});
   box.innerHTML = `
-    <h2>Streaming — best available ${r.pos}, week ${r.week}</h2>
-    <div class="filters" style="margin-bottom:6px">${chips}</div>
+    <h2>Streaming — best available ${r.pos}
+      <span style="margin-left:10px;white-space:nowrap">
+        <button class="btn small" data-sweek="-1" title="previous week" ${r.week <= 1 ? "disabled" : ""}>◀</button>
+        <b style="margin:0 6px">Week ${r.week}</b>
+        <button class="btn small" data-sweek="1" title="next week" ${r.week >= 18 ? "disabled" : ""}>▶</button>
+      </span>
+      ${r.week !== lineupWeek ? `<span class="hint dim">lineup tab is on week ${lineupWeek}</span>` : ""}
+    </h2>
+    <div class="filters" style="margin-bottom:6px">${chips}
+      ${!r.has_weekly_data ? `<button class="btn small" id="sFetch" title="pull this week's matchup projections">Fetch wk ${r.week} projections</button>` : ""}
+      ${!r.has_vegas ? `<button class="btn small" id="sVegas" title="pull this week's betting lines for implied totals">Vegas wk ${r.week}</button>` : ""}
+      <span class="note" id="sStatus"></span>
+    </div>
     ${r.on_bye.length ? `<div class="note" style="color:var(--amber);margin-bottom:6px">⚠ On bye week ${r.week}: <b>${esc(r.on_bye.join(", "))}</b> — pick a fill-in below.</div>` : ""}
-    ${!r.has_weekly_data ? `<div class="note" style="margin-bottom:6px">Projections are season-pace estimates — <b>Fetch week ${r.week} matchup projections</b> above for real matchups${r.has_vegas ? "" : ", and Vegas lines for implied totals"}.</div>`
-      : (!r.has_vegas ? `<div class="note dim" style="margin-bottom:6px">Fetch Vegas lines for week ${r.week} to see implied team totals.</div>` : "")}
+    ${upcoming.length ? `<div class="note" style="margin-bottom:6px">Upcoming byes: ${upcoming.map(([wk, names]) =>
+      `<b>Wk ${wk}</b> ${esc(names.join(", "))} <button class="btn small" data-sweekto="${wk}">view week ${wk}</button>`).join(" &nbsp;·&nbsp; ")}</div>` : ""}
+    ${!r.has_weekly_data ? `<div class="note dim" style="margin-bottom:6px">Projections are season-pace estimates until week ${r.week} matchup projections are fetched.</div>` : ""}
     ${!r.has_recent ? `<div class="note dim" style="margin-bottom:6px">Click <b>Usage</b> above to pull last week's actuals — the history column fills in from there.</div>` : ""}
     <div class="table-wrap"><table>
       <tr><th>Player</th><th class="r">Opp</th><th class="r">Proj</th><th class="r" title="Vegas implied team total">Implied</th><th class="r">Last 3</th><th class="r">Avg 3</th><th class="r" title="preseason projection / 17">Season/wk</th><th class="r">Adds</th></tr>
       ${r.mine.map(c => rowHtml(c, true)).join("")}
       ${r.candidates.map(c => rowHtml(c, false)).join("") || `<tr><td colspan="8" class="dim">No available ${r.pos} with a projection this week.</td></tr>`}
     </table></div>`;
-  $$("[data-spos]").forEach(b => (b.onclick = () => { S.streamPos = b.dataset.spos; renderStream(week); }));
+  $$("[data-spos]").forEach(b => (b.onclick = () => { S.streamPos = b.dataset.spos; renderStream(lineupWeek); }));
+  $$("[data-sweek]").forEach(b => (b.onclick = () => { S.streamWeek = Math.min(18, Math.max(1, r.week + +b.dataset.sweek)); renderStream(lineupWeek); }));
+  $$("[data-sweekto]").forEach(b => (b.onclick = () => { S.streamWeek = +b.dataset.sweekto; S.streamPos = ""; renderStream(lineupWeek); }));
+  const pull = async (btn, path, label) => {
+    const st = $("#sStatus");
+    st.textContent = `${label}…`;
+    try { const x = await api(path, { week: r.week }); toast(`${label}: ${x.players != null ? x.players + " players" : x.teams != null ? x.teams + " teams" : "ok"} (week ${r.week})`); renderStream(lineupWeek); }
+    catch (e) { st.textContent = "❌ " + e.message; }
+  };
+  const sf = $("#sFetch"); if (sf) sf.onclick = () => pull(sf, "/api/week/refresh", "Projections");
+  const sv = $("#sVegas"); if (sv) sv.onclick = () => pull(sv, "/api/vegas/refresh", "Vegas lines");
 }
 
 async function renderLineup(gen) {
@@ -1124,6 +1148,7 @@ async function renderLineup(gen) {
       </div>
     </div>
   </div>`;
+  S.streamWeek = L.week;  // the panel starts on the lineup week; its own arrows move it from there
   renderStream(L.week);
   $("#lWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; S.weekPinned = true; setView(S.view); };
   $("#lRefresh").onclick = async () => {
