@@ -347,20 +347,24 @@ def fetch_week_stats(season, week):
 
 
 def apply_week_stats(week, entries):
-    """Store actual usage (targets/carries/touches) for trend detection."""
-    known = {p["id"] for p in db.all_players()}
+    """Store actual usage (targets/carries/touches) for trend detection, plus
+    the week's actual fantasy points (ESPN scoring) for every known player —
+    K/DST/QB rows with no touches still count for streaming history."""
+    pos_by_id = {p["id"]: p["position"] for p in db.all_players()}
     rows = []
     for e in entries:
         pid = str(e.get("player_id"))
-        if pid not in known:
+        pos = pos_by_id.get(pid)
+        if pos is None:
             continue
         st = e.get("stats") or {}
         targets = st.get("rec_tgt", 0) or 0
         carries = st.get("rush_att", 0) or 0
-        if targets + carries <= 0:
+        pts = round(scoring.score_player(pos, st, games=1), 1) if st else 0.0
+        if targets + carries <= 0 and pts == 0:
             continue
         rows.append({"player_id": pid, "targets": targets, "carries": carries,
-                     "touches": targets + carries})
+                     "touches": targets + carries, "pts": pts})
     if not rows:
         raise RuntimeError(f"No week {week} usage stats matched the pool")
     db.set_week_stats(week, rows)

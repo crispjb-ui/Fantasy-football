@@ -136,6 +136,11 @@ def connect() -> sqlite3.Connection:
         except sqlite3.OperationalError:
             pass
         try:
+            # Actual fantasy points per week (ESPN scoring) — streaming history.
+            conn.execute("ALTER TABLE week_stats ADD COLUMN pts REAL")
+        except sqlite3.OperationalError:
+            pass
+        try:
             # Per-team starting auction budget (league trades draft dollars);
             # NULL falls back to the league default.
             conn.execute("ALTER TABLE teams ADD COLUMN budget INTEGER")
@@ -405,11 +410,28 @@ def set_week_stats(week, rows):
     conn = connect()
     conn.execute("DELETE FROM week_stats WHERE week=?", (week,))
     conn.executemany(
-        "INSERT OR REPLACE INTO week_stats (week, player_id, targets, carries, touches) "
-        "VALUES (?,?,?,?,?)",
-        [(week, r["player_id"], r["targets"], r["carries"], r["touches"]) for r in rows],
+        "INSERT OR REPLACE INTO week_stats (week, player_id, targets, carries, touches, pts) "
+        "VALUES (?,?,?,?,?,?)",
+        [(week, r["player_id"], r["targets"], r["carries"], r["touches"], r.get("pts")) for r in rows],
     )
     conn.commit()
+
+
+def recent_points(limit_weeks=4):
+    """{player_id: [{week, pts} oldest-first]} for the most recent stored weeks
+    that carry actual points (rows without pts are skipped)."""
+    weeks = [r[0] for r in connect().execute(
+        "SELECT DISTINCT week FROM week_stats WHERE pts IS NOT NULL ORDER BY week DESC LIMIT ?",
+        (limit_weeks,))]
+    if not weeks:
+        return {}
+    marks = ",".join("?" * len(weeks))
+    out = {}
+    for r in connect().execute(
+            f"SELECT week, player_id, pts FROM week_stats WHERE week IN ({marks}) "
+            "AND pts IS NOT NULL ORDER BY week", weeks):
+        out.setdefault(r["player_id"], []).append({"week": r["week"], "pts": r["pts"]})
+    return out
 
 
 def usage_weeks(player_id, limit=4):

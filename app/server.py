@@ -759,7 +759,64 @@ def api_lineup(q, body):
         "total": result["total"],
         "warnings": result["warnings"],
         "streams": {pos: [wslim(p) for p in cands] for pos, cands in streams.items()},
-        "fa_upgrades": upgrades[:6],
+        # only meaningful on real matchup projections — season-pace comparisons
+        # (preseason total / 17) told the user a D/ST beat one that just scored 17
+        "fa_upgrades": upgrades[:6] if wk_proj else [],
+    }
+
+
+STREAM_ORDER = ("QB", "TE", "RB", "WR", "K", "DST")
+
+
+def api_stream(q, body):
+    """Best available players at one position for one week — the bye-week /
+    streaming question: this week's matchup projection, Vegas implied total,
+    recent actual points, season pace and add heat, side by side."""
+    week = int(q.get("week", ["1"])[0])
+    pos = (q.get("pos", [""])[0] or "").upper()
+    pool, cfg = _valued_pool()
+    rostered = _all_rostered_ids()
+    my_ids = set(_my_roster_ids())
+    my_players = [p for p in pool if p["id"] in my_ids]
+    wk_proj = db.week_proj(week)
+    vegas = (db.meta_get("vegas", {}) or {}).get(str(week), {})
+    trending = (db.meta_get("trending", {"adds": {}}) or {}).get("adds", {})
+    recent = db.recent_points(4)
+    games = config.GAMES_PER_SEASON
+
+    bye_needs = {}
+    for p in my_players:
+        if p.get("bye") == week:
+            bye_needs.setdefault(p["position"], []).append(p["name"])
+    if pos not in STREAM_ORDER:
+        pos = next((x for x in STREAM_ORDER if x in bye_needs), "DST")
+
+    def row(p):
+        wpts, opp, src = recommendations.weekly_points(p, wk_proj, week)
+        hist = [h["pts"] for h in recent.get(p["id"], [])][-3:]
+        v = vegas.get(p.get("team") or "")
+        return {**_slim(p), "wpts": wpts, "opp": opp, "wsrc": src,
+                "implied": v["implied"] if v else None,
+                "last3": hist, "avg3": round(sum(hist) / len(hist), 1) if hist else None,
+                "season_avg": round(p["points"] / games, 1),
+                "trending_adds": trending.get(p["id"], 0),
+                "on_bye": p.get("bye") == week}
+
+    mine = sorted((row(p) for p in my_players if p["position"] == pos),
+                  key=lambda r: r["wpts"], reverse=True)
+    cands = []
+    for p in pool:
+        if p["id"] in rostered or p["position"] != pos or p.get("bye") == week:
+            continue
+        if (p.get("injury") or "") in recommendations.OUT_STATUSES:
+            continue
+        cands.append(row(p))
+    cands.sort(key=lambda r: (r["wpts"], r["avg3"] or 0.0), reverse=True)
+    return {
+        "week": week, "pos": pos,
+        "has_weekly_data": bool(wk_proj), "has_vegas": bool(vegas), "has_recent": bool(recent),
+        "bye_needs": bye_needs, "on_bye": bye_needs.get(pos, []),
+        "mine": mine, "candidates": cands[:12],
     }
 
 
@@ -1213,6 +1270,7 @@ ROUTES = {
     ("POST", "/api/espn/config"): api_espn_config,
     ("POST", "/api/espn/sync"): api_espn_sync,
     ("GET", "/api/lineup"): api_lineup,
+    ("GET", "/api/stream"): api_stream,
     ("POST", "/api/week/refresh"): api_week_refresh,
     ("POST", "/api/trade/eval"): api_trade_eval,
     ("GET", "/api/trade/suggest"): api_trade_suggest,

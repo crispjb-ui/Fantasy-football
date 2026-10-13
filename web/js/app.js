@@ -1001,6 +1001,51 @@ function wRow(p, slot) {
   </tr>`;
 }
 
+/* Streaming panel on the Lineup tab: best available at one position for the
+   week — matchup projection, Vegas implied total, last-3 actuals, season pace,
+   add heat. Defaults to whichever position I have on bye that week. */
+async function renderStream(week) {
+  const box = $("#streamPanel");
+  if (!box) return;
+  let r;
+  try { r = await api(`/api/stream?week=${week}&pos=${encodeURIComponent(S.streamPos || "")}`); }
+  catch (e) { box.innerHTML = `<h2>Streaming</h2><div class="note">❌ ${esc(e.message)}</div>`; return; }
+  if (!$("#streamPanel")) return;  // view changed while fetching
+  S.streamPos = r.pos;
+  const chips = ["QB", "RB", "WR", "TE", "K", "DST"].map(p =>
+    `<button class="btn small ${p === r.pos ? "primary" : ""}" data-spos="${p}">${p}${(r.bye_needs[p] || []).length ? " ⚠" : ""}</button>`).join(" ");
+  const hist = c => c.last3 && c.last3.length ? c.last3.map(x => x.toFixed(1)).join(" · ") : '<span class="dim">—</span>';
+  const impl = c => c.implied == null ? '<span class="dim">—</span>'
+    : `<span style="color:${c.implied >= 24 ? "var(--green)" : c.implied <= 17 ? "var(--red)" : "inherit"}">${c.implied}</span>`;
+  const rowHtml = (c, mine) => `
+    <tr${mine ? ' style="opacity:.8"' : ""}>
+      <td><span class="pos pos-${c.position}">${c.position}</span> ${esc(c.name)} <span class="dim">${esc(c.team || "")}</span>${
+        c.on_bye ? ' <span class="tag" style="color:var(--red)">BYE</span>' : ""}${
+        c.injury && c.injury !== "Active" ? ` <span class="tag" style="color:var(--amber)">${esc(c.injury)}</span>` : ""}${
+        mine ? ' <span class="tag dim">mine</span>' : ""}</td>
+      <td class="r dim">${c.opp && c.opp !== "BYE" ? "vs " + esc(c.opp) : ""}</td>
+      <td class="r"><b>${c.wpts}</b>${c.wsrc === "season-est" ? ' <span class="dim" title="season-pace estimate — fetch this week\'s projections">est</span>' : ""}</td>
+      <td class="r">${impl(c)}</td>
+      <td class="r dim" title="actual points, last 3 stored weeks">${hist(c)}</td>
+      <td class="r">${c.avg3 != null ? c.avg3 : '<span class="dim">—</span>'}</td>
+      <td class="r dim">${c.season_avg}</td>
+      <td class="r dim">${c.trending_adds ? "🔥" + c.trending_adds : ""}</td>
+    </tr>`;
+  box.innerHTML = `
+    <h2>Streaming — best available ${r.pos}, week ${r.week}</h2>
+    <div class="filters" style="margin-bottom:6px">${chips}</div>
+    ${r.on_bye.length ? `<div class="note" style="color:var(--amber);margin-bottom:6px">⚠ On bye week ${r.week}: <b>${esc(r.on_bye.join(", "))}</b> — pick a fill-in below.</div>` : ""}
+    ${!r.has_weekly_data ? `<div class="note" style="margin-bottom:6px">Projections are season-pace estimates — <b>Fetch week ${r.week} matchup projections</b> above for real matchups${r.has_vegas ? "" : ", and Vegas lines for implied totals"}.</div>`
+      : (!r.has_vegas ? `<div class="note dim" style="margin-bottom:6px">Fetch Vegas lines for week ${r.week} to see implied team totals.</div>` : "")}
+    ${!r.has_recent ? `<div class="note dim" style="margin-bottom:6px">Click <b>Usage</b> above to pull last week's actuals — the history column fills in from there.</div>` : ""}
+    <div class="table-wrap"><table>
+      <tr><th>Player</th><th class="r">Opp</th><th class="r">Proj</th><th class="r" title="Vegas implied team total">Implied</th><th class="r">Last 3</th><th class="r">Avg 3</th><th class="r" title="preseason projection / 17">Season/wk</th><th class="r">Adds</th></tr>
+      ${r.mine.map(c => rowHtml(c, true)).join("")}
+      ${r.candidates.map(c => rowHtml(c, false)).join("") || `<tr><td colspan="8" class="dim">No available ${r.pos} with a projection this week.</td></tr>`}
+    </table></div>`;
+  $$("[data-spos]").forEach(b => (b.onclick = () => { S.streamPos = b.dataset.spos; renderStream(week); }));
+}
+
 async function renderLineup(gen) {
   const [L, M] = await Promise.all([
     api(`/api/lineup?week=${S.waiverWeek}`),
@@ -1058,29 +1103,28 @@ async function renderLineup(gen) {
       </table></div>
     </div>
     <div>
-      ${L.fa_upgrades.length ? `<div class="panel">
+      ${L.has_weekly_data ? (L.fa_upgrades.length ? `<div class="panel">
         <h2>Free agents who beat your starters this week</h2>
         ${L.fa_upgrades.map(u => `
           <div class="result-row"><span class="pos pos-${u.player.position}">${u.player.position}</span>
             <span class="nm">${esc(u.player.name)} <span class="meta">${u.player.wpts} pts${u.player.opp ? " vs " + esc(u.player.opp) : ""} — beats ${esc(u.over)} by ${u.gain}</span></span>
             <span class="val">+${u.gain}</span></div>`).join("")}
-      </div>` : ""}
+      </div>` : "") : `<div class="panel">
+        <h2>Free agents who beat your starters this week</h2>
+        <div class="note">Fetch week ${L.week} matchup projections first — comparing on preseason averages is how a D/ST that just scored 17 reads as beatable.</div>
+      </div>`}
       ${oddsHtml}
       ${(L.horizon || []).some(h => h.byes.length) ? `<div class="panel">
         <h2>Bye horizon — next 4 weeks</h2>
         ${L.horizon.map(h => `<div class="note"><b>Wk ${h.week}</b>: ${h.byes.length ? esc(h.byes.join(", ")) + (h.byes.length >= 3 ? ' <span style="color:var(--red)">— plan ahead!</span>' : "") : '<span class="dim">no byes</span>'}</div>`).join("")}
       </div>` : ""}
-      <div class="panel">
-        <h2>Streaming — best available D/ST &amp; K this week</h2>
-        ${["DST", "K"].map(pos => `
-          <div class="note" style="margin:6px 0 2px"><b>${pos}</b></div>
-          ${(L.streams[pos] || []).map(p => `
-            <div class="result-row"><span class="pos pos-${p.position}">${p.position}</span>
-              <span class="nm">${esc(p.name)} <span class="meta">${p.opp && p.opp !== "BYE" ? "vs " + esc(p.opp) : ""}</span></span>
-              <span class="val">${p.wpts}</span></div>`).join("") || '<div class="note">none</div>'}`).join("")}
+      <div class="panel" id="streamPanel">
+        <h2>Streaming — best available by position, week ${L.week}</h2>
+        <div class="note">Loading…</div>
       </div>
     </div>
   </div>`;
+  renderStream(L.week);
   $("#lWeek").onchange = e => { S.waiverWeek = +e.target.value || 1; S.weekPinned = true; setView(S.view); };
   $("#lRefresh").onclick = async () => {
     $("#lStatus").textContent = "Fetching…";

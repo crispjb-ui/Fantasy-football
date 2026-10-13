@@ -902,6 +902,38 @@ _recs2 = _rec.waiver_recommendations(_mine2 + [_fa_k, _fa_w], _mine2, {"m1", "mk
 _order2 = [x["player"]["id"] for x in _recs2]
 check("waivers: K edge damped below an equal WR edge", _order2.index("fa-w") < _order2.index("fa-k"), str(_order2))
 
+# --- streaming view: a position for a week, with history ----------------------------------------
+r, s = call("GET", "/api/players")
+_poolp = r["players"]
+_qb_fa = next(p for p in _poolp if p["position"] == "QB")
+_k_any = next(p for p in _poolp if p["position"] == "K")
+_n = _ds2.apply_week_stats(7, [
+    {"player_id": _qb_fa["id"], "stats": {"pass_yd": 300, "pass_td": 3, "rush_att": 0}},   # no touches
+    {"player_id": _k_any["id"], "stats": {"xpm": 3, "fgm_30_39": 2}},                         # K: no usage at all
+])
+_rp = _db.recent_points(4)
+check("week stats keep actual points for players with no touches (QB/K)",
+      _n == 2 and _rp.get(_qb_fa["id"]) and _rp[_qb_fa["id"]][-1]["pts"] > 15 and _rp.get(_k_any["id"]), str({k: _rp.get(k) for k in (_qb_fa["id"], _k_any["id"])}))
+r, s = call("GET", "/api/stream?week=8&pos=QB")
+check("stream endpoint responds for a position/week", s == 200 and r["pos"] == "QB" and r["week"] == 8 and r["has_weekly_data"], str(r)[:120])
+_cs = r["candidates"]
+check("stream candidates sorted by this week's projection", _cs and all(_cs[i]["wpts"] >= _cs[i + 1]["wpts"] for i in range(len(_cs) - 1)),
+      str([(c["name"], c["wpts"]) for c in _cs][:5]))
+check("stream rows carry opp, implied, history, season pace and heat",
+      all(k in _cs[0] for k in ("opp", "implied", "last3", "avg3", "season_avg", "trending_adds")), str(_cs[0])[:200])
+_qrow = next((c for c in _cs if c["id"] == _qb_fa["id"]), None)
+check("stream history shows the stored actual", _qrow is None or (_qrow["last3"] and _qrow["avg3"] > 15), str(_qrow and _qrow["last3"]))
+# default position follows my bye-week hole
+r, s = call("GET", "/api/waivers?week=8")
+_my_rb2 = next((p for p in r["my_roster"] if p["position"] == "RB"), None)
+if _my_rb2:
+    _c = _db.connect(); _c.execute("UPDATE players SET bye=8 WHERE id=?", (_my_rb2["id"],)); _c.commit()
+    r, s = call("GET", "/api/stream?week=8")
+    check("stream defaults to the position I have on bye", r["pos"] == "RB" and _my_rb2["name"] in r["on_bye"], f"pos={r['pos']} on_bye={r['on_bye']}")
+    check("my bye player is flagged in 'mine'", any(m["id"] == _my_rb2["id"] and m["on_bye"] for m in r["mine"]))
+r, s = call("GET", "/api/lineup?week=9")
+check("lineup: no free-agent 'beats your starter' claims without weekly data", s == 200 and r["fa_upgrades"] == [] and not r["has_weekly_data"])
+
 # Drop candidates: position-relative, and never the only man at a required slot.
 r, s = call("GET", "/api/waivers?week=8")
 _pos_n = {}
