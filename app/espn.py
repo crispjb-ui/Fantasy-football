@@ -234,3 +234,75 @@ def apply_league_payload(data):
 
 def sync(season):
     return apply_league_payload(fetch_league(season))
+
+
+# --- matchup history: every week's score, every season ------------------------
+
+ESPN_HISTORY_URL = ("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/"
+                    "{league_id}?seasonId={season}&view=mMatchup&view=mTeam&view=mSettings")
+HISTORY_API_FROM = 2018  # seasons before this live behind the leagueHistory endpoint
+
+
+def fetch_season_matchups(season):
+    s = get_settings()
+    if not s["league_id"]:
+        raise RuntimeError("Set your ESPN league ID first")
+    url = (ESPN_URL if season >= HISTORY_API_FROM else ESPN_HISTORY_URL).format(
+        season=season, league_id=s["league_id"])
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0", "Accept": "application/json",
+        "Cookie": f"espn_s2={s['espn_s2']}; SWID={s['swid']}",
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = resp.read().decode("utf-8", errors="replace")
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"ESPN returned a non-JSON response for {season}")
+    return apply_season_matchups(season, data)
+
+
+def _team_label(t):
+    return (t.get("name") or f"{t.get('location', '')} {t.get('nickname', '')}".strip()
+            or f"Team {t.get('id')}")
+
+
+def apply_season_matchups(season, data):
+    """Reconcile one season's ESPN payload (dict, or the one-element list the
+    leagueHistory endpoint returns) into the matchups table. Pure: no network.
+    Skips unplayed weeks (both sides 0) and playoff byes (one side missing)."""
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    members = {}
+    for m in data.get("members") or []:
+        name = (m.get("displayName") or f"{m.get('firstName', '')} {m.get('lastName', '')}".strip())
+        if m.get("id") and name:
+            members[m["id"]] = name
+    teams = {}
+    for t in data.get("teams") or []:
+        owners = t.get("owners") or []
+        owner = next((members[o] for o in owners if o in members), None)
+        teams[t["id"]] = {"name": _team_label(t), "owner": owner}
+    reg_weeks = ((data.get("settings") or {}).get("scheduleSettings") or {}).get("matchupPeriodCount")
+
+    rows = []
+    for m in data.get("schedule") or []:
+        wk = m.get("matchupPeriodId")
+        home, away = m.get("home") or {}, m.get("away") or {}
+        if not wk or "teamId" not in home or "teamId" not in away:
+            continue  # playoff bye / malformed
+        hp, ap = float(home.get("totalPoints") or 0), float(away.get("totalPoints") or 0)
+        if hp == 0 and ap == 0:
+            continue  # not played yet
+        tier = m.get("playoffTierType")
+        playoff = (tier not in (None, "NONE")) or (bool(reg_weeks) and wk > reg_weeks)
+        for side, opp, sp, op in ((home, away, hp, ap), (away, home, ap, hp)):
+            t, o = teams.get(side["teamId"], {}), teams.get(opp["teamId"], {})
+            rows.append({"week": wk, "team_id": side["teamId"], "team": t.get("name"),
+                         "owner": t.get("owner"), "points": sp,
+                         "opp_team_id": opp["teamId"], "opp": o.get("name"),
+                         "opp_owner": o.get("owner"), "opp_points": op, "playoff": playoff})
+    db.replace_season_matchups(season, rows)
+    return {"season": season, "team_weeks": len(rows),
+            "weeks": max((r["week"] for r in rows), default=0),
+            "owners_named": sum(1 for t in teams.values() if t["owner"])}

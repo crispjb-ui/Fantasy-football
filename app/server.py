@@ -827,6 +827,64 @@ def api_stream(q, body):
     }
 
 
+# --- league record book (every week's score, every ESPN season) ------------------
+
+def api_espn_history(q, body):
+    """Pull matchup scores for a range of seasons. One bad season never aborts
+    the rest — each gets its own ok/error entry."""
+    cfg = db.get_config()
+    first = int(body.get("from") or 2007)
+    last = int(body.get("to") or cfg["season"])
+    results = []
+    for season in range(first, last + 1):
+        try:
+            results.append({"ok": True, **espn.fetch_season_matchups(season)})
+        except Exception as e:  # noqa: BLE001 — reported per season to the UI
+            results.append({"ok": False, "season": season, "error": str(e)})
+    return {"ok": any(r["ok"] for r in results), "results": results,
+            "seasons": db.matchup_seasons()}
+
+
+def _rec_tag(r):
+    return {"season": r["season"], "week": r["week"], "team": r["team"], "owner": r["owner"],
+            "points": r["points"], "opp": r["opp"], "opp_owner": r["opp_owner"],
+            "opp_points": r["opp_points"], "playoff": bool(r["playoff"]),
+            "margin": round((r["points"] or 0) - (r["opp_points"] or 0), 1)}
+
+
+def api_records(q, body):
+    rows = [r for r in db.matchups_all() if r["points"] is not None]
+    by_pts = sorted(rows, key=lambda r: r["points"])
+    wins = [r for r in rows if r["points"] > (r["opp_points"] or 0)]
+    losses = [r for r in rows if r["points"] < (r["opp_points"] or 0)]
+    owners = {}
+    for r in rows:
+        k = r["owner"] or r["team"] or "?"
+        o = owners.setdefault(k, {"owner": k, "weeks": 0, "total": 0.0, "best": None, "worst": None})
+        o["weeks"] += 1
+        o["total"] += r["points"]
+        if o["best"] is None or r["points"] > o["best"]["points"]:
+            o["best"] = _rec_tag(r)
+        if o["worst"] is None or r["points"] < o["worst"]["points"]:
+            o["worst"] = _rec_tag(r)
+    owner_rows = sorted(owners.values(), key=lambda o: -o["best"]["points"])
+    for o in owner_rows:
+        o["avg"] = round(o["total"] / o["weeks"], 1)
+        del o["total"]
+    return {
+        "seasons": db.matchup_seasons(),
+        "team_weeks": len(rows),
+        "highest": [_rec_tag(r) for r in by_pts[::-1][:10]],
+        "lowest": [_rec_tag(r) for r in by_pts[:10]],
+        "blowouts": [_rec_tag(r) for r in sorted(wins, key=lambda r: -(r["points"] - r["opp_points"]))[:5]],
+        "closest": [_rec_tag(r) for r in sorted(wins, key=lambda r: r["points"] - r["opp_points"])[:5]],
+        "best_loss": [_rec_tag(r) for r in sorted(losses, key=lambda r: -r["points"])[:5]],
+        "worst_win": [_rec_tag(r) for r in sorted(wins, key=lambda r: r["points"])[:5]],
+        "shootouts": [_rec_tag(r) for r in sorted(wins, key=lambda r: -(r["points"] + r["opp_points"]))[:5]],
+        "owners": owner_rows,
+    }
+
+
 def api_week_refresh(q, body):
     cfg = db.get_config()
     week = int(body.get("week") or 1)
@@ -1276,6 +1334,8 @@ ROUTES = {
     ("POST", "/api/room/sync"): api_room_sync,
     ("POST", "/api/espn/config"): api_espn_config,
     ("POST", "/api/espn/sync"): api_espn_sync,
+    ("POST", "/api/espn/history"): api_espn_history,
+    ("GET", "/api/records"): api_records,
     ("GET", "/api/lineup"): api_lineup,
     ("GET", "/api/stream"): api_stream,
     ("POST", "/api/week/refresh"): api_week_refresh,

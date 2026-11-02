@@ -1016,6 +1016,45 @@ check("ESPN 'Active' overrides Sleeper 'Out' for IR eligibility",
       all(p["id"] != _o_id for p in r["ir_eligible"]) and any(p["id"] == _o_id and p["espn_status"] == "Active" for p in r["ir_pending"]),
       str([(p["name"], p.get("espn_status")) for p in r["ir_pending"]])[:160])
 
+# --- record book: every week's score, every season -------------------------------------------
+_members = [{"id": "{A}", "displayName": "Brett Crisp"}, {"id": "{B}", "displayName": "James Farmer"},
+            {"id": "{C}", "firstName": "Omar", "lastName": "Nagji"}]
+_teams24 = [{"id": 1, "name": "Drug Runner. Corp.", "owners": ["{A}"]},
+            {"id": 2, "location": "Face", "nickname": "Card", "owners": ["{B}"]},
+            {"id": 3, "name": "slaying asians", "owners": ["{C}"]}]
+_sched24 = [
+    {"matchupPeriodId": 1, "home": {"teamId": 1, "totalPoints": 171.4}, "away": {"teamId": 2, "totalPoints": 98.2}, "playoffTierType": "NONE"},
+    {"matchupPeriodId": 2, "home": {"teamId": 2, "totalPoints": 61.0}, "away": {"teamId": 1, "totalPoints": 62.5}, "playoffTierType": "NONE"},
+    {"matchupPeriodId": 3, "home": {"teamId": 3, "totalPoints": 120.0}, "away": {"teamId": 1, "totalPoints": 140.0}, "playoffTierType": "NONE"},
+    {"matchupPeriodId": 15, "home": {"teamId": 1, "totalPoints": 130.0}, "away": {"teamId": 3, "totalPoints": 95.0}, "playoffTierType": "WINNERS_BRACKET"},
+    {"matchupPeriodId": 15, "home": {"teamId": 2}},                                                                   # playoff bye
+    {"matchupPeriodId": 16, "home": {"teamId": 1, "totalPoints": 0}, "away": {"teamId": 2, "totalPoints": 0}},       # not played yet
+]
+_r24 = _espn.apply_season_matchups(2024, {"members": _members, "teams": _teams24, "schedule": _sched24,
+                                          "settings": {"scheduleSettings": {"matchupPeriodCount": 14}}})
+check("matchup history: team-weeks stored, byes and unplayed skipped", _r24["team_weeks"] == 8 and _r24["weeks"] == 15, str(_r24))
+check("matchup history: owners resolved from members (displayName or first+last)", _r24["owners_named"] == 3, str(_r24))
+# older seasons arrive as a one-element list from the leagueHistory endpoint
+_r17 = _espn.apply_season_matchups(2017, [{"members": _members, "teams": _teams24, "schedule": [
+    {"matchupPeriodId": 5, "home": {"teamId": 3, "totalPoints": 44.6}, "away": {"teamId": 2, "totalPoints": 150.3}, "playoffTierType": "NONE"}]}])
+check("matchup history: leagueHistory list payload accepted", _r17["team_weeks"] == 2, str(_r17))
+check("matchup history: seasons listed", _db.matchup_seasons() == [2017, 2024], str(_db.matchup_seasons()))
+r, s = call("GET", "/api/records")
+check("records: highest single week", s == 200 and r["highest"][0]["points"] == 171.4 and r["highest"][0]["owner"] == "Brett Crisp"
+      and r["highest"][0]["season"] == 2024 and r["highest"][0]["week"] == 1, str(r["highest"][:1]))
+check("records: lowest single week", r["lowest"][0]["points"] == 44.6 and r["lowest"][0]["owner"] == "Omar Nagji" and r["lowest"][0]["season"] == 2017, str(r["lowest"][:1]))
+check("records: playoff weeks flagged", any(x["playoff"] and x["week"] == 15 for x in r["highest"]), str([(x["week"], x["playoff"]) for x in r["highest"]]))
+check("records: closest decided game is the 62.5-61.0", r["closest"][0]["margin"] == 1.5, str(r["closest"][:1]))
+check("records: best loss is the 120 vs 140", r["best_loss"][0]["points"] == 120.0, str(r["best_loss"][:1]))
+check("records: biggest blowout is 150.3-44.6", r["blowouts"][0]["margin"] == 105.7, str(r["blowouts"][:1]))
+_own = {o["owner"]: o for o in r["owners"]}
+check("records: per-manager best/worst", _own["Brett Crisp"]["best"]["points"] == 171.4 and _own["Brett Crisp"]["worst"]["points"] == 62.5
+      and _own["James Farmer"]["weeks"] == 3, str({k: (v["best"]["points"], v["worst"]["points"], v["weeks"]) for k, v in _own.items()}))
+# re-applying a season replaces it, never duplicates
+_espn.apply_season_matchups(2024, {"members": _members, "teams": _teams24, "schedule": _sched24[:1]})
+r, s = call("GET", "/api/records")
+check("records: re-pulling a season replaces its rows", r["team_weeks"] == 4, str(r["team_weeks"]))
+
 srv.shutdown()
 print()
 if failures:

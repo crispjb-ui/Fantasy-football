@@ -680,9 +680,46 @@ async function renderStrategy(gen) {
 
 /* ---------- league history (2006-2025, bundled) ---------- */
 
+function recRow(r, showMargin) {
+  return `<tr>
+    <td class="dim">${r.season} wk ${r.week}${r.playoff ? ' <span class="tag" title="playoffs">P</span>' : ""}</td>
+    <td>${esc(r.owner || r.team || "?")} <span class="dim">${esc(r.team || "")}</span></td>
+    <td class="r"><b>${(r.points ?? 0).toFixed(1)}</b></td>
+    <td class="dim">vs ${esc(r.opp_owner || r.opp || "?")} ${(r.opp_points ?? 0).toFixed(1)}</td>
+    ${showMargin ? `<td class="r ${r.margin >= 0 ? "money" : "dim"}">${r.margin > 0 ? "+" : ""}${r.margin}</td>` : ""}
+  </tr>`;
+}
+
+function recTable(title, rows, showMargin) {
+  if (!rows || !rows.length) return "";
+  return `<div class="note" style="margin:10px 0 2px"><b>${title}</b></div>
+    <div class="table-wrap"><table>${rows.map(r => recRow(r, showMargin)).join("")}</table></div>`;
+}
+
 async function renderHistory(gen) {
-  const h = await api("/api/league_history");
+  const [h, R] = await Promise.all([api("/api/league_history"), api("/api/records")]);
   if (stale(gen)) return;
+  const season = (S.app && S.app.config && S.app.config.season) || new Date().getFullYear();
+  const recordBook = `
+  <div class="panel">
+    <h2>Record book <span class="hint dim">${R.seasons.length ? `${R.seasons[0]}–${R.seasons[R.seasons.length - 1]} · ${R.team_weeks} team-weeks` : "every week's score, every ESPN season"}</span>
+      <button class="btn small" id="rbPull" style="margin-left:10px" data-from="${R.seasons.length ? season : 2007}">${R.seasons.length ? `Update ${season} from ESPN` : `Pull ESPN matchup history (2007–${season})`}</button>
+      ${R.seasons.length ? `<button class="btn small" id="rbPullAll" title="re-read every season — only needed if something looks wrong">re-pull all</button>` : ""}
+      <span class="note" id="rbStatus">${esc(S.rbStatus || "")}</span></h2>
+    ${R.seasons.length ? `
+      <div class="grid2">
+        <div>${recTable("Highest single-week scores", R.highest)}${recTable("Biggest blowouts", R.blowouts, true)}${recTable("Most points in a loss", R.best_loss)}${recTable("Highest-scoring matchups", R.shootouts)}</div>
+        <div>${recTable("Lowest single-week scores", R.lowest)}${recTable("Closest decided games", R.closest, true)}${recTable("Fewest points in a win", R.worst_win)}
+          <div class="note" style="margin:10px 0 2px"><b>Every manager's best and worst week</b></div>
+          <div class="table-wrap"><table>
+            <tr><th>Manager</th><th class="r">Weeks</th><th class="r">Avg</th><th class="r">Best</th><th class="r">Worst</th></tr>
+            ${R.owners.map(o => `<tr><td>${esc(o.owner)}</td><td class="r dim">${o.weeks}</td><td class="r">${o.avg}</td>
+              <td class="r money" title="${o.best.season} wk ${o.best.week} vs ${esc(o.best.opp_owner || o.best.opp || "")}">${o.best.points.toFixed(1)}</td>
+              <td class="r dim" title="${o.worst.season} wk ${o.worst.week} vs ${esc(o.worst.opp_owner || o.worst.opp || "")}">${o.worst.points.toFixed(1)}</td></tr>`).join("")}
+          </table></div>
+        </div>
+      </div>` : `<div class="note">Nothing pulled yet. This uses your ESPN cookies from Data &amp; Setup and reads every season's matchups — takes about a minute for twenty seasons.</div>`}
+  </div>`;
   const years = Object.keys(h.standings).sort((a, b) => b - a);
   const year = S.historyYear && h.standings[S.historyYear] ? S.historyYear : years[0];
   S.historyYear = year;
@@ -718,7 +755,7 @@ async function renderHistory(gen) {
       <td>${r.pa.toFixed(1)}</td>
     </tr>`).join("");
 
-  $("#view").innerHTML = `
+  $("#view").innerHTML = recordBook + `
   <div class="cols">
     <div>
       <div class="panel">
@@ -752,6 +789,22 @@ async function renderHistory(gen) {
     </div>
   </div>`;
   $("#hist-year").onchange = e => { S.historyYear = e.target.value; renderHistory(++renderGen); };
+  const pullHistory = async (from) => {
+    const st = $("#rbStatus");
+    st.textContent = from < season ? "Pulling seasons from ESPN… (about a minute)" : `Updating ${season} from ESPN…`;
+    try {
+      const r = await api("/api/espn/history", { from, to: season });
+      const bad = r.results.filter(x => !x.ok);
+      const good = r.results.length - bad.length;
+      const msg = `${good} season${good === 1 ? "" : "s"} loaded` +
+        (bad.length ? ` — ${bad.length} failed: ${bad.map(x => `${x.season} (${x.error})`).join("; ")}` : "");
+      if (good > 0) { S.rbStatus = msg; await setView(S.view); }   // re-render shows the new rows; status survives via S
+      else st.textContent = "❌ " + msg;
+    } catch (e) { st.textContent = "❌ " + e.message; }
+  };
+  S.rbStatus = "";
+  $("#rbPull").onclick = () => pullHistory(+$("#rbPull").dataset.from);
+  const rbAll = $("#rbPullAll"); if (rbAll) rbAll.onclick = () => pullHistory(2007);
 }
 
 /* ---------- players table ---------- */

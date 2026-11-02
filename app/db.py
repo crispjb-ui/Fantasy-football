@@ -110,6 +110,20 @@ CREATE TABLE IF NOT EXISTS week_stats (
     touches REAL DEFAULT 0,
     PRIMARY KEY (week, player_id)
 );
+CREATE TABLE IF NOT EXISTS matchups (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    team TEXT,
+    owner TEXT,
+    points REAL,
+    opp_team_id INTEGER,
+    opp TEXT,
+    opp_owner TEXT,
+    opp_points REAL,
+    playoff INTEGER DEFAULT 0,
+    PRIMARY KEY (season, week, team_id)
+);
 """
 
 
@@ -520,3 +534,30 @@ def history(season=None):
     else:
         rows = connect().execute("SELECT * FROM history ORDER BY season DESC, price DESC").fetchall()
     return [dict(r) for r in rows]
+
+
+# --- league matchup history (ESPN, every season) ------------------------------
+
+def replace_season_matchups(season, rows):
+    """rows: [{week, team_id, team, owner, points, opp_team_id, opp, opp_owner,
+    opp_points, playoff}] — full replacement for one season."""
+    conn = connect()
+    conn.execute("DELETE FROM matchups WHERE season=?", (season,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO matchups (season, week, team_id, team, owner, points, "
+        "opp_team_id, opp, opp_owner, opp_points, playoff) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [(season, r["week"], r["team_id"], r.get("team"), r.get("owner"), r["points"],
+          r.get("opp_team_id"), r.get("opp"), r.get("opp_owner"), r.get("opp_points"),
+          1 if r.get("playoff") else 0) for r in rows],
+    )
+    conn.commit()
+
+
+def matchups_all():
+    return [dict(r) for r in connect().execute(
+        "SELECT * FROM matchups ORDER BY season, week, team_id").fetchall()]
+
+
+def matchup_seasons():
+    return [r[0] for r in connect().execute(
+        "SELECT DISTINCT season FROM matchups ORDER BY season").fetchall()]
