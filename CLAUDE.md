@@ -23,7 +23,7 @@ in via the SQLite `meta` table (`db.get_config()`).
 python3 run.py                    # start app on http://127.0.0.1:8175 (auto-opens browser)
 python3 run.py --no-open --port N # headless/dev
 FFDRAFT_DB=/tmp/x.db python3 ...  # point at a scratch database
-python3 scripts/selftest.py       # THE test suite: 146 end-to-end checks, exits non-zero on failure
+python3 scripts/selftest.py       # THE test suite: 250 end-to-end checks, exits non-zero on failure
 ```
 
 Always run `scripts/selftest.py` after changes; it boots a real server on a
@@ -110,12 +110,36 @@ data/                  runtime SQLite DB + draft backups (gitignored)
 
 ## Verification workflow used so far
 
-1. `python3 scripts/selftest.py` (all 146 must pass).
-2. UI smoke via Playwright (`playwright-core` in the scratchpad, Chromium at
-   `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`): boot server on a
-   scratch DB, drive the flows, assert zero page errors, screenshot.
-3. Commit to `claude/fantasy-football-draft-tool-xknzl5` and push. Do not
+1. `python3 scripts/selftest.py` (all 250 must pass).
+2. UI smoke via Playwright: `scripts/ui_smoke/` (README there) — seed a
+   scratch DB into ESPN-live state, boot the server, drive the Lineup and
+   History views, assert zero page errors, screenshot.
+3. Commit to `claude/draft-locations-history-uefb9d` and push. Do not
    create PRs unless asked.
+
+## Branch state (Nov 2026)
+
+- **`claude/draft-locations-history-uefb9d` is the live branch** — the app,
+  the hype film (`hype/renders/film-v16.mp4`), the record book, everything.
+  There is no `main`; clone with `--branch` or you may land elsewhere.
+- `claude/fantasy-football-draft-tool-xknzl5` is stale (merged into the
+  live branch in Oct 2026). It still carries a contradictory draft-venue
+  entry (Baltimore 2008 as a live draft) and an old film render. Nothing
+  should be built on it.
+- The repo is ~410 MB packed because every film render (v11–v16, ~90 MB
+  each) is in history; `--depth 1` clones are the norm.
+
+## In-season state (what the app does now)
+
+ESPN sync (Data & Setup) is the source of truth once configured: rosters,
+FAAB, ESPN's injury tags (they gate the IR slot — Sleeper's news-driven
+status does not), the current NFL week, and league matchup history for
+the record book. Waivers rank on the week's matchup projections once
+fetched (season totals are a tiebreaker only), with a 'This wk' column,
+heat-floored FAAB bids, and injured-starter replacements tagged. The Lineup
+tab's streaming panel answers "who do I pick up at X for week N" with its
+own week control, Vegas implied totals and last-3 actuals. With ESPN live
+there is no manual transaction ledger — ESPN is the ledger.
 
 ## Product philosophy
 
